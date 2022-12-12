@@ -21,10 +21,11 @@ def scan(path):
         if re.search(u'[\u4e00-\u9fa5]', path_lists[i]):
             print(f'{path_lists[i]}:中文路径！此项跳过')
             continue
-        if i % 5 == 0:
+        model_str += f"{i}:{path_lists[i]}  "
+        if (i+1) % 5 == 0:
             print(f"{model_str}")
             model_str = ""
-        model_str += f"{i}:{path_lists[i]}  "
+
     if len(path_lists) % 5 != 0:
         print(model_str)
     return path_lists
