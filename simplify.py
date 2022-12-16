@@ -85,4 +85,4 @@ if __name__ == '__main__':
         shutil.copyfile(f'./checkpoints/{project_name}/{pth_name}', f"./{project_name}/{pth_name}")
     else:
         print("输入错误，程序退出")
-        exit()
+        exit() 
