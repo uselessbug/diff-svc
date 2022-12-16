@@ -12,7 +12,7 @@ from utils.hparams import hparams
 
 class Hubertencoder():
     def __init__(self, pt_path='checkpoints/hubert/hubert_soft.pt'):
-        if not 'use_vec' in hparams.keys():
+        if 'use_vec' not in hparams.keys():
             hparams['use_vec'] = False
         if hparams['use_vec']:
             pt_path = "checkpoints/vec/checkpoint_best_legacy_500.pt"
@@ -26,6 +26,7 @@ class Hubertencoder():
                 self.use_gpu = True
             self.dev = torch.device("cuda" if self.use_gpu and torch.cuda.is_available() else "cpu")
             self.hbt_model = hubert_soft(str(pt_path)).to(self.dev)
+        print(f"| load 'model' from '{pt_path}'")
 
     def encode(self, wav_path):
         if isinstance(wav_path, BytesIO):
