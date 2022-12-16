@@ -118,8 +118,10 @@ class Svc:
                              print_hparams=False)
 
         self.mel_bins = hparams['audio_num_mel_bins']
+        hparams['hubert_gpu'] = hubert_gpu
+        self.hubert = Hubertencoder(hparams['hubert_path'])
         self.model = GaussianDiffusion(
-            phone_encoder=Hubertencoder(hparams['hubert_path']),
+            phone_encoder=self.hubert,
             out_dims=self.mel_bins, denoise_fn=self.DIFF_DECODERS[hparams['diff_decoder_type']](hparams),
             timesteps=hparams['timesteps'],
             K_step=hparams['K_step'],
@@ -128,8 +130,6 @@ class Svc:
         )
         self.load_ckpt()
         self.model.cuda()
-        hparams['hubert_gpu'] = hubert_gpu
-        self.hubert = Hubertencoder(hparams['hubert_path'])
         self.pe = PitchExtractor().cuda()
         utils.load_ckpt(self.pe, hparams['pe_ckpt'], 'model', strict=True)
         self.pe.eval()
