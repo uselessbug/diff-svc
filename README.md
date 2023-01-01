@@ -2,7 +2,8 @@
 Singing Voice Conversion via diffusion model
 
 ## updates:
->2022.12.17 新增pre_check检测环境、数据@深夜诗人; 改进simplify精简模型@九尾玄狐; 监修代码@小狼\
+>2023.01.01 更新切片机v2、取消切片缓存，简化部分infer流程；取消vec支持、增加中文hubert@小狼\
+2022.12.17 新增pre_check检测环境、数据@深夜诗人; 改进simplify精简模型@九尾玄狐; 监修代码@小狼\
 2022.12.16 修复推理时hubert模型重复加载的问题@小狼\
 2022.12.4 44.1kHz声码器开放申请，正式提供对44.1kHz的支持\
 2022.11.28 增加了默认打开的no_fs2选项，可优化部分网络，提升训练速度、缩减模型体积，对于未来新训练的模型有效\
@@ -62,3 +63,4 @@ For English support, you can join this discord:
 This project is based on [diffsinger](https://github.com/MoonInTheRiver/DiffSinger), [diffsinger (openvpi maintenance version)](https://github.com/openvpi/DiffSinger), and [soft-vc](https://github.com/bshall/soft-vc). We would also like to thank the openvpi members for their help during the development and training process. \
 >注意：此项目与同名论文[DiffSVC](https://arxiv.org/abs/2105.13871)无任何联系，请勿混淆！\
 Note: This project has no connection with the paper of the same name [DiffSVC](https://arxiv.org/abs/2105.13871), please do not confuse them!
+>音频切片参考[audio-slicer](https://github.com/openvpi/audio-slicer)

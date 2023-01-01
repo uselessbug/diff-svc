@@ -5,13 +5,11 @@ import numpy as np
 import torch
 
 
-
-def load_model(vec_path):
+def load_cn_model(ch_hubert_path):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("load model(s) from {}".format(vec_path))
     from fairseq import checkpoint_utils
     models, saved_cfg, task = checkpoint_utils.load_model_ensemble_and_task(
-        [vec_path],
+        [ch_hubert_path],
         suffix="",
     )
     model = models[0]
@@ -20,7 +18,7 @@ def load_model(vec_path):
     return model
 
 
-def get_vec_units(con_model, audio_path, dev):
+def get_cn_hubert_units(con_model, audio_path, dev):
     audio, sampling_rate = librosa.load(audio_path)
     if len(audio.shape) > 1:
         audio = librosa.to_mono(audio.transpose(1, 0))
@@ -46,15 +44,15 @@ def get_vec_units(con_model, audio_path, dev):
 
 if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model_path = "../../checkpoints/checkpoint_best_legacy_500.pt"  # checkpoint_best_legacy_500.pt
-    vec_model = load_model(model_path)
+    model_path = "../../checkpoints/cn_hubert/chinese-hubert-base-fairseq-ckpt.pt"  # checkpoint_best_legacy_500.pt
+    zh_hubert_model = load_cn_model(model_path)
     # 这个不用改，自动在根目录下所有wav的同文件夹生成其对应的npy
-    file_lists = list(Path("../../data/vecfox").rglob('*.wav'))
+    file_lists = list(Path("../../data/firefox").rglob('*.wav'))
     nums = len(file_lists)
     count = 0
     for wav_path in file_lists:
         npy_path = wav_path.with_suffix(".npy")
-        npy_content = get_vec_units(vec_model, str(wav_path), device).cpu().numpy()[0]
+        npy_content = get_cn_hubert_units(zh_hubert_model, str(wav_path), device).cpu().numpy()[0]
         np.save(str(npy_path), npy_content)
         count += 1
         print(f"hubert process：{round(count * 100 / nums, 2)}%")

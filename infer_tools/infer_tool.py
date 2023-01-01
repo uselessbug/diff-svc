@@ -21,9 +21,6 @@ from preprocessing.hubertinfer import Hubertencoder
 from utils.hparams import hparams, set_hparams
 from utils.pitch_utils import denorm_f0, norm_interp_f0
 
-if os.path.exists("chunks_temp.json"):
-    os.remove("chunks_temp.json")
-
 
 def read_temp(file_name):
     if not os.path.exists(file_name):
@@ -67,9 +64,9 @@ def timeit(func):
 
 
 def format_wav(audio_path):
-    if Path(audio_path).suffix=='.wav':
+    if Path(audio_path).suffix == '.wav':
         return
-    raw_audio, raw_sample_rate = librosa.load(audio_path, mono=True,sr=None)
+    raw_audio, raw_sample_rate = librosa.load(audio_path, mono=True, sr=None)
     soundfile.write(Path(audio_path).with_suffix(".wav"), raw_audio, raw_sample_rate)
 
 
@@ -138,25 +135,22 @@ class Svc:
     def load_ckpt(self, model_name='model', force=True, strict=True):
         utils.load_ckpt(self.model, self.model_path, model_name, force, strict)
 
-    def infer(self, in_path, key, acc, use_pe=True, use_crepe=True, thre=0.05, singer=False, **kwargs):
-        batch = self.pre(in_path, acc, use_crepe, thre)
+    def infer(self, in_path, key, acc, use_crepe=True, singer=False, **kwargs):
+        batch = self.pre(in_path, acc, use_crepe)
+        use_pe = True if hparams['audio_sample_rate'] == 24000 else False
         spk_embed = batch.get('spk_embed') if not hparams['use_spk_id'] else batch.get('spk_ids')
-        hubert = batch['hubert']
-        ref_mels = batch["mels"]
-        energy=batch['energy']
-        mel2ph = batch['mel2ph']
         batch['f0'] = batch['f0'] + (key / 12)
-        batch['f0'][batch['f0']>np.log2(hparams['f0_max'])]=0
-        f0 = batch['f0']
-        uv = batch['uv']
+        batch['f0'][batch['f0'] > np.log2(hparams['f0_max'])] = 0
+
         @timeit
         def diff_infer():
-            outputs = self.model(
-                hubert.cuda(), spk_embed=spk_embed, mel2ph=mel2ph.cuda(), f0=f0.cuda(), uv=uv.cuda(),energy=energy.cuda(),
-                ref_mels=ref_mels.cuda(),
-                infer=True, **kwargs)
-            return outputs
-        outputs=diff_infer()
+            diff_outputs = self.model(
+                batch['hubert'].cuda(), spk_embed=spk_embed, mel2ph=batch['mel2ph'].cuda(), f0=batch['f0'].cuda(),
+                uv=batch['uv'].cuda(), energy=batch['energy'].cuda(), ref_mels=batch["mels"].cuda(), infer=True,
+                **kwargs)
+            return diff_outputs
+
+        outputs = diff_infer()
         batch['outputs'] = self.model.out2mel(outputs['mel_out'])
         batch['mel2ph_pred'] = outputs['mel2ph']
         batch['f0_gt'] = denorm_f0(batch['f0'], batch['uv'], hparams)
@@ -199,10 +193,10 @@ class Svc:
         wav_pred = self.vocoder.spec2wav(mel_pred, f0=f0_pred)
         return f0_gt, f0_pred, wav_pred
 
-    def temporary_dict2processed_input(self, item_name, temp_dict, use_crepe=True, thre=0.05):
-        '''
+    def temporary_dict2processed_input(self, item_name, temp_dict, use_crepe=False):
+        """
             process data in temporary_dicts
-        '''
+        """
 
         binarization_args = hparams['binarization_args']
 
@@ -212,15 +206,14 @@ class Svc:
             global f0_dict
             if use_crepe:
                 md5 = get_md5(wav)
-                if f"{md5}_gt" in f0_dict.keys():
+                if md5 in f0_dict.keys():
                     print("load temp crepe f0")
-                    gt_f0 = np.array(f0_dict[f"{md5}_gt"]["f0"])
-                    coarse_f0 = np.array(f0_dict[f"{md5}_coarse"]["f0"])
+                    gt_f0 = np.array(f0_dict[md5]["f0"])
+                    coarse_f0 = np.array(f0_dict[md5]["coarse"])
                 else:
                     torch.cuda.is_available() and torch.cuda.empty_cache()
-                    gt_f0, coarse_f0 = get_pitch_crepe(wav, mel, hparams, thre)
-                f0_dict[f"{md5}_gt"] = {"f0": gt_f0.tolist(), "time": int(time.time())}
-                f0_dict[f"{md5}_coarse"] = {"f0": coarse_f0.tolist(), "time": int(time.time())}
+                    gt_f0, coarse_f0 = get_pitch_crepe(wav, mel, hparams, threshold=0.05)
+                f0_dict[md5] = {"f0": gt_f0.tolist(), "coarse": coarse_f0.tolist(), "time": int(time.time())}
                 write_temp("./infer_tools/f0_temp.json", f0_dict)
             else:
                 gt_f0, coarse_f0 = get_pitch_parselmouth(wav, mel, hparams)
@@ -263,7 +256,7 @@ class Svc:
                 get_align(mel, hubert_encoded)
         return processed_input
 
-    def pre(self, wav_fn, accelerate, use_crepe=True, thre=0.05):
+    def pre(self, wav_fn, accelerate, use_crepe=True):
         if isinstance(wav_fn, BytesIO):
             item_name = self.project_name
         else:
@@ -271,7 +264,7 @@ class Svc:
             item_name = song_info[-1].split('.')[-2]
         temp_dict = {'wav_fn': wav_fn, 'spk_id': self.project_name}
 
-        temp_dict = self.temporary_dict2processed_input(item_name, temp_dict, use_crepe, thre)
+        temp_dict = self.temporary_dict2processed_input(item_name, temp_dict, use_crepe)
         hparams['pndm_speedup'] = accelerate
         batch = processed_input2batch([getitem(temp_dict)])
         return batch
@@ -300,12 +293,12 @@ def getitem(item):
 
 
 def processed_input2batch(samples):
-    '''
+    """
         Args:
             samples: one batch of processed_input
         NOTE:
             the batch size is controlled by hparams['max_sentences']
-    '''
+    """
     if len(samples) == 0:
         return {}
     item_names = [s['item_name'] for s in samples]
