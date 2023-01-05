@@ -12,7 +12,7 @@ from utils.hparams import hparams
 
 def run_clip(raw_audio_path, svc_model, key, acc, use_crepe, use_gt_mel=False, add_noise_step=500, out_path=None,
              slice_db=-40, **kwargs):
-    print(f'code version:2022-12-31')
+    print(f'code version:2023-01-05')
 
     clean_name = Path(raw_audio_path).name.split(".")[0]
     infer_tool.format_wav(raw_audio_path)
@@ -52,17 +52,17 @@ def run_clip(raw_audio_path, svc_model, key, acc, use_crepe, use_gt_mel=False, a
 
 if __name__ == '__main__':
     # 工程文件夹名，训练时用的那个
-    project_name = "xxx"
-    model_path = f'./checkpoints/{project_name}/clean_model_ckpt_steps_180000.ckpt'
+    project_name = "fox_cn"
+    model_path = f'./checkpoints/{project_name}/clean_model_ckpt_steps_120000.ckpt'
     config_path = f'./checkpoints/{project_name}/config.yaml'
 
     # 支持多个wav/ogg文件，放在raw文件夹下，带扩展名
-    file_names = ["夜航星"]
+    file_names = ["逍遥仙"]
     trans = [0]  # 音高调整，支持正负（半音），数量与上一行对应，不足的自动按第一个移调参数补齐
     # 加速倍数
     accelerate = 20
     hubert_gpu = True
-    format = 'flac'
+    wav_format = 'flac'
     step = int(model_path.split("_")[-1].split(".")[0])
 
     # 下面不动
@@ -75,4 +75,4 @@ if __name__ == '__main__':
             f_name += ".wav"
         audio_path = f"./raw/{f_name}"
         run_clip(raw_audio_path=audio_path, svc_model=model, key=tran, acc=accelerate, use_crepe=False,
-                 project_name=project_name, format=format)
+                 project_name=project_name, format=wav_format)

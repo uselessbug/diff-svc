@@ -11,7 +11,6 @@ import soundfile
 import torch
 
 import utils
-from modules.fastspeech.pe import PitchExtractor
 from network.diff.candidate_decoder import FFT
 from network.diff.diffusion import GaussianDiffusion
 from network.diff.net import DiffNet
@@ -102,17 +101,14 @@ class Svc:
         self.project_name = project_name
         self.DIFF_DECODERS = {
             'wavenet': lambda hp: DiffNet(hp['audio_num_mel_bins']),
-            'fft': lambda hp: FFT(
-                hp['hidden_size'], hp['dec_layers'], hp['dec_ffn_kernel_size'], hp['num_heads']),
+            'fft': lambda hp: FFT(hp['hidden_size'], hp['dec_layers'], hp['dec_ffn_kernel_size'], hp['num_heads']),
         }
 
         self.model_path = model_path
         self.dev = torch.device("cuda")
 
         self._ = set_hparams(config=config_name, exp_name=self.project_name, infer=True,
-                             reset=True,
-                             hparams_str='',
-                             print_hparams=False)
+                             reset=True, hparams_str='', print_hparams=False)
 
         self.mel_bins = hparams['audio_num_mel_bins']
         hparams['hubert_gpu'] = hubert_gpu
@@ -125,25 +121,18 @@ class Svc:
             loss_type=hparams['diff_loss_type'],
             spec_min=hparams['spec_min'], spec_max=hparams['spec_max'],
         )
-        self.load_ckpt()
+        utils.load_ckpt(self.model, self.model_path, 'model', force=True, strict=True)
         self.model.cuda()
-        self.pe = PitchExtractor().cuda()
-        utils.load_ckpt(self.pe, hparams['pe_ckpt'], 'model', strict=True)
-        self.pe.eval()
         self.vocoder = get_vocoder_cls(hparams)()
-
-    def load_ckpt(self, model_name='model', force=True, strict=True):
-        utils.load_ckpt(self.model, self.model_path, model_name, force, strict)
 
     def infer(self, in_path, key, acc, use_crepe=True, singer=False, **kwargs):
         batch = self.pre(in_path, acc, use_crepe)
-        use_pe = True if hparams['audio_sample_rate'] == 24000 else False
-        spk_embed = batch.get('spk_embed') if not hparams['use_spk_id'] else batch.get('spk_ids')
         batch['f0'] = batch['f0'] + (key / 12)
         batch['f0'][batch['f0'] > np.log2(hparams['f0_max'])] = 0
 
         @timeit
         def diff_infer():
+            spk_embed = batch.get('spk_embed') if not hparams['use_spk_id'] else batch.get('spk_ids')
             diff_outputs = self.model(
                 batch['hubert'].cuda(), spk_embed=spk_embed, mel2ph=batch['mel2ph'].cuda(), f0=batch['f0'].cuda(),
                 uv=batch['uv'].cuda(), energy=batch['energy'].cuda(), ref_mels=batch["mels"].cuda(), infer=True,
@@ -154,10 +143,7 @@ class Svc:
         batch['outputs'] = self.model.out2mel(outputs['mel_out'])
         batch['mel2ph_pred'] = outputs['mel2ph']
         batch['f0_gt'] = denorm_f0(batch['f0'], batch['uv'], hparams)
-        if use_pe:
-            batch['f0_pred'] = self.pe(outputs['mel_out'])['f0_denorm_pred'].detach()
-        else:
-            batch['f0_pred'] = outputs.get('f0_denorm')
+        batch['f0_pred'] = outputs.get('f0_denorm')
         return self.after_infer(batch, singer, in_path)
 
     @timeit
@@ -197,8 +183,6 @@ class Svc:
         """
             process data in temporary_dicts
         """
-
-        binarization_args = hparams['binarization_args']
 
         @timeit
         def get_pitch(wav, mel):
@@ -243,17 +227,9 @@ class Svc:
         }
         processed_input = {**temp_dict, **processed_input}  # merge two dicts
 
-        if binarization_args['with_f0']:
-            get_pitch(wav, mel)
-        if binarization_args['with_hubert']:
-            st = time.time()
-            hubert_encoded = processed_input['hubert'] = self.hubert.encode(temp_dict['wav_fn'])
-            et = time.time()
-            dev = 'cuda' if hparams['hubert_gpu'] and torch.cuda.is_available() else 'cpu'
-            print(f'hubert (on {dev}) time used {et - st}')
-
-            if binarization_args['with_align']:
-                get_align(mel, hubert_encoded)
+        get_pitch(wav, mel)
+        hubert_encoded = processed_input['hubert'] = self.hubert.encode(temp_dict['wav_fn'])
+        get_align(mel, hubert_encoded)
         return processed_input
 
     def pre(self, wav_fn, accelerate, use_crepe=True):

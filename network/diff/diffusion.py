@@ -8,7 +8,6 @@ from torch import nn
 from tqdm import tqdm
 
 from modules.fastspeech.fs2 import FastSpeech2
-# from modules.diffsinger_midi.fs2 import FastSpeech2MIDI
 from utils.hparams import hparams
 from training.train_pipeline import Batch2Loss
 
@@ -70,9 +69,6 @@ class GaussianDiffusion(nn.Module):
                  spec_max=None):
         super().__init__()
         self.denoise_fn = denoise_fn
-        # if hparams.get('use_midi') is not None and hparams['use_midi']:
-        #     self.fs2 = FastSpeech2MIDI(phone_encoder, out_dims)
-        # else:
         self.fs2 = FastSpeech2(phone_encoder, out_dims)
         self.mel_bins = out_dims
 

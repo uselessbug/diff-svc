@@ -2,27 +2,21 @@ from multiprocessing.pool import Pool
 
 import matplotlib
 
-from utils.pl_utils import data_loader
-from utils.training_utils import RSQRTSchedule
 from network.vocoders.base_vocoder import get_vocoder_cls, BaseVocoder
-from modules.fastspeech.pe import PitchExtractor
+from utils.training_utils import RSQRTSchedule
 
 matplotlib.use('Agg')
-import os
 import numpy as np
 from tqdm import tqdm
 import torch.distributed as dist
 
 from training.task.base_task import BaseTask
 from utils.hparams import hparams
-from utils.text_encoder import TokenTextEncoder
-import json
 from preprocessing.hubertinfer import Hubertencoder
 import torch
 import torch.optim
 import torch.utils.data
 import utils
-
 
 
 class TtsTask(BaseTask):
@@ -108,10 +102,7 @@ class TtsTask(BaseTask):
         self.saving_result_pool = Pool(8)
         self.saving_results_futures = []
         self.vocoder: BaseVocoder = get_vocoder_cls(hparams)()
-        if hparams.get('pe_enable') is not None and hparams['pe_enable']:
-            self.pe = PitchExtractor().cuda()
-            utils.load_ckpt(self.pe, hparams['pe_ckpt'], 'model', strict=True)
-            self.pe.eval()
+
     def test_end(self, outputs):
         self.saving_result_pool.close()
         [f.get() for f in tqdm(self.saving_results_futures)]
@@ -126,6 +117,7 @@ class TtsTask(BaseTask):
         # Assign weight 1.0 to all labels except for padding (id=0).
         dim = target.size(-1)
         return target.abs().sum(-1, keepdim=True).ne(0).float().repeat(1, 1, dim)
+
 
 if __name__ == '__main__':
     TtsTask.start()

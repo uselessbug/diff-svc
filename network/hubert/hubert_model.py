@@ -1,16 +1,12 @@
 import copy
-import os
 import random
 from typing import Optional, Tuple
 
 import librosa
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as t_func
 from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
-
-from utils import hparams
 
 
 class Hubert(nn.Module):
@@ -245,32 +241,3 @@ def get_units(hbt_soft, raw_wav_path, dev=torch.device('cuda')):
     with torch.inference_mode():
         units = hbt_soft.units(torch.FloatTensor(wav16.astype(float)).unsqueeze(0).unsqueeze(0).to(dev))
         return units
-
-
-def get_end_file(dir_path, end):
-    file_list = []
-    for root, dirs, files in os.walk(dir_path):
-        files = [f for f in files if f[0] != '.']
-        dirs[:] = [d for d in dirs if d[0] != '.']
-        for f_file in files:
-            if f_file.endswith(end):
-                file_list.append(os.path.join(root, f_file).replace("\\", "/"))
-    return file_list
-
-
-if __name__ == '__main__':
-    from pathlib import Path
-
-    dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # hubert的模型路径
-    hbt_model = hubert_soft(str(list(Path(hparams['hubert_path']).home().rglob('*.pt'))[0]))
-    # 这个不用改，自动在根目录下所有wav的同文件夹生成其对应的npy
-    file_lists = list(Path(hparams['raw_data_dir']).rglob('*.wav'))
-    nums = len(file_lists)
-    count = 0
-    for wav_path in file_lists:
-        npy_path = wav_path.with_suffix(".npy")
-        npy_content = get_units(hbt_model, wav_path).cpu().numpy()[0]
-        np.save(str(npy_path), npy_content)
-        count += 1
-        print(f"hubert process：{round(count * 100 / nums, 2)}%")

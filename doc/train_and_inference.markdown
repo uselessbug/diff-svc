@@ -1,19 +1,29 @@
 # Diff-SVC(train/inference by yourself)
+
 ## 0.环境配置
->注意:requirements文件已更新，目前分为3个版本，可自行选择使用。\
-1. requirements.txt 是此仓库测试的原始完整环境，Torch1.12.1+cu113,可选择直接pip 或删除其中与pytorch有关的项目(torch/torchvision)后再pip，并使用自己的torch环境
+
+> 注意:requirements文件已更新，目前分为3个版本，可自行选择使用。\
+
+1. requirements.txt 是此仓库测试的原始完整环境，Torch1.12.1+cu113,可选择直接pip 或删除其中与pytorch有关的项目(
+   torch/torchvision)后再pip，并使用自己的torch环境
+
 ```
 pip install -r requirements.txt
 ```
->2. (推荐)requirements_short.txt 是上述环境的手动整理版，不含torch本体，也可以直接
+
+> 2. (推荐)requirements_short.txt 是上述环境的手动整理版，不含torch本体，也可以直接
+
 ```
 pip install -r requirements_short.txt
 ```
->3. 根目录下有一份@三千整理的依赖列表requirements.png，是在某品牌云服务器上跑通的，不过此torch版本已不兼容目前版本代码,但是其他部分版本可以参考，十分感谢
+
+> 3. 根目录下有一份@三千整理的依赖列表requirements.png，是在某品牌云服务器上跑通的，不过此torch版本已不兼容目前版本代码,但是其他部分版本可以参考，十分感谢
 
 ## 1.推理
->使用根目录下的inference.ipynb进行推理或使用经过作者适配的@小狼的infer.py\
-在第一个block中修改如下参数：
+
+> 使用根目录下的inference.ipynb进行推理或使用经过作者适配的@小狼的infer.py\
+> 在第一个block中修改如下参数：
+
 ```
 config_path='checkpoints压缩包中config.yaml的位置'
 如'./checkpoints/nyaru/config.yaml'
@@ -31,7 +41,9 @@ hubert_gpu=True
 另外现已支持长音频自动切片功能(ipynb和infer.py均可)，超过30s的音频将自动在静音处切片处理，感谢@小狼的代码
 
 ```
+
 ### 可调节参数：
+
 ```
 wav_fn='xxx.wav'#传入音频的路径，默认在项目根目录中
 
@@ -62,18 +74,24 @@ add_noise_step=500
 
 wav_gen='yyy.wav'#输出音频的路径，默认在项目根目录中，可通过改变扩展名更改保存文件类型
 ```
+
 如果使用infer.py，修改方式类似，需要修改__name__=='__main__'中的部分，然后在根目录中执行\
 python infer.py\
 这种方式需要将原音频放入raw中并在results中查找结果
+
 ## 2.数据预处理与训练
+
 ### 2.1 准备数据
->目前支持wav格式和ogg格式的音频数据，采样率最好高于24kHz，程序会自动处理采样率和声道问题。采样率不可低于16kHz（一般不会的）\
-音频需要切片为5-15s为宜的短音频，长度没有具体要求，但不宜过长过短。音频需要为纯目标人干声，不可以有背景音乐和其他人声音，最好也不要有过重的混响等。若经过去伴奏等处理，请尽量保证处理后的音频质量。\
-目前仅支持单人训练，总时长尽量保证在3h或以上，不需要额外任何标注，将音频文件放在下述raw_data_dir下即可，这个目录下的结构可以自由定义，程序会自主找到所需文件。
+
+> 目前支持wav格式和ogg格式的音频数据，采样率最好高于24kHz，程序会自动处理采样率和声道问题。采样率不可低于16kHz（一般不会的）\
+> 音频需要切片为5-15s为宜的短音频，长度没有具体要求，但不宜过长过短。音频需要为纯目标人干声，不可以有背景音乐和其他人声音，最好也不要有过重的混响等。若经过去伴奏等处理，请尽量保证处理后的音频质量。\
+> 目前仅支持单人训练，总时长尽量保证在3h或以上，不需要额外任何标注，将音频文件放在下述raw_data_dir下即可，这个目录下的结构可以自由定义，程序会自主找到所需文件。
 
 ### 2.2 修改超参数配置
->首先请备份一份config.yaml(此文件对应24kHz声码器, 44.1kHz声码器请使用config_nsf.yaml)，然后修改它\
-可能会用到的参数如下(以工程名为nyaru为例):
+
+> 首先请备份一份config.yaml(此文件对应24kHz声码器, 44.1kHz声码器请使用config_nsf.yaml)，然后修改它\
+> 可能会用到的参数如下(以工程名为nyaru为例):
+
 ```
 K_step: 1000
 #diffusion过程总的step,建议不要修改
@@ -145,66 +163,91 @@ no_fs2: true
 #对网络encoder的精简，能缩减模型体积，加快训练，且并未发现有对网络表现损害的直接证据。默认打开
 
 ```
->其他的参数如果你不知道它是做什么的，请不要修改，即使你看着名称可能以为你知道它是做什么的。
+
+> 其他的参数如果你不知道它是做什么的，请不要修改，即使你看着名称可能以为你知道它是做什么的。
 
 ### 2.3 数据预处理
+
 在diff-svc的目录下执行以下命令：\
 #windows
+
 ```
 set PYTHONPATH=.
 set CUDA_VISIBLE_DEVICES=0 
 python preprocessing/binarize.py --config training/config.yaml
 ```
+
 #linux
+
 ```
 export PYTHONPATH=.
 CUDA_VISIBLE_DEVICES=0 python preprocessing/binarize.py --config training/config.yaml
 ```
-对于预处理，@小狼准备了一份可以分段处理hubert和其他特征的代码，如果正常处理显存不足，可以先python ./network/hubert/hubert_model.py
+
+对于预处理，@小狼准备了一份可以分段处理hubert和其他特征的代码，如果正常处理显存不足，可以先python
+./network/hubert/hubert_model.py
 然后再运行正常的指令，能够识别提前处理好的hubert特征
+
 ### 2.4 训练
+
 #windows
+
 ```
 set CUDA_VISIBLE_DEVICES=0 
 python run.py --config training/config.yaml --exp_name nyaru --reset  
 ```
+
 #linux
+
 ```
 CUDA_VISIBLE_DEVICES=0 python run.py --config training/config.yaml --exp_name nyaru --reset 
 ```
->需要将exp_name改为你的工程名，并修改config路径，请确保和预处理使用的是同一个config文件\
-*重要* ：训练完成后，若之前不是在本地数据预处理，除了需要下载对应的ckpt文件，也需要将config文件下载下来，作为推理时使用的config，不可以使用本地之前上传上去那份。因为预处理时会向config文件中写入内容。推理时要保持使用的config和预处理使用的config是同一份。
 
+> 需要将exp_name改为你的工程名，并修改config路径，请确保和预处理使用的是同一个config文件\
+*重要*
+>
+：训练完成后，若之前不是在本地数据预处理，除了需要下载对应的ckpt文件，也需要将config文件下载下来，作为推理时使用的config，不可以使用本地之前上传上去那份。因为预处理时会向config文件中写入内容。推理时要保持使用的config和预处理使用的config是同一份。
 
 ### 2.5 可能出现的问题：
->2.5.1 'Upsample' object has no attribute 'recompute_scale_factor'\
-此问题发现于cuda11.3对应的torch中，若出现此问题,请通过合适的方法(如ide自动跳转等)找到你的python依赖包中的torch.nn.modules.upsampling.py文件(如conda环境中为conda目录\envs\环境目录\Lib\site-packages\torch\nn\modules\upsampling.py)，修改其153-154行
+
+> 2.5.1 'Upsample' object has no attribute 'recompute_scale_factor'\
+> 此问题发现于cuda11.3对应的torch中，若出现此问题,请通过合适的方法(如ide自动跳转等)
+> 找到你的python依赖包中的torch.nn.modules.upsampling.py文件(
+> 如conda环境中为conda目录\envs\环境目录\Lib\site-packages\torch\nn\modules\upsampling.py)，修改其153-154行
+
 ```
 return F.interpolate(input, self.size, self.scale_factor, self.mode, self.align_corners,recompute_scale_factor=self.recompute_scale_factor)
 ```
->改为
+
+> 改为
+
 ```
 return F.interpolate(input, self.size, self.scale_factor, self.mode, self.align_corners)
 # recompute_scale_factor=self.recompute_scale_factor)
 ```
->2.5.2 no module named 'utils'\
-请在你的运行环境(如colab笔记本)中以如下方式设置:
+
+> 2.5.2 no module named 'utils'\
+> 请在你的运行环境(如colab笔记本)中以如下方式设置:
+
 ```
 import os
 os.environ['PYTHONPATH']='.'
 !CUDA_VISIBLE_DEVICES=0 python preprocessing/binarize.py --config training/config.yaml
 ```
+
 注意一定要在项目文件夹的根目录中执行
->2.5.3 cannot load library 'libsndfile.so'\
-可能会在linux环境中遇到的错误,请执行以下指令
+> 2.5.3 cannot load library 'libsndfile.so'\
+> 可能会在linux环境中遇到的错误,请执行以下指令
+
 ```
 apt-get install libsndfile1 -y
 ```
->2.5.4 cannot load import 'consume_prefix_in_state_dict_if_present'\
-torch版本过低，请更换高版本torch
 
->2.5.5 预处理数据过慢\
-检查是否在配置中开启了use_crepe，将其关闭可显著提升速度。\
-检查配置中hubert_gpu是否开启。
+> 2.5.4 cannot load import 'consume_prefix_in_state_dict_if_present'\
+> torch版本过低，请更换高版本torch
+
+> 2.5.5 预处理数据过慢\
+> 检查是否在配置中开启了use_crepe，将其关闭可显著提升速度。\
+> 检查配置中hubert_gpu是否开启。
 
 如有其他问题，请加入QQ频道或discord频道询问。

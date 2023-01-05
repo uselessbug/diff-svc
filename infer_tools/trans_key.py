@@ -1,3 +1,4 @@
+import os
 head_list = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
 
@@ -42,20 +43,25 @@ def trans_key(raw_data, key):
     return raw_data
 
 
-key = -6
-f_w = open("raw.txt", "w", encoding='utf-8')
-with open("result.txt", "r", encoding='utf-8') as f:
-    raw_data = f.readlines()
-    for raw in raw_data:
-        raw_list = raw.split("|")
-        new_note_seq_list = []
-        for note_seq in raw_list[3].split(" "):
-            if note_seq != "rest":
-                note_seq = note_seq.split("/")[0] if "/" in note_seq else note_seq
-                new_note_seq = move_key(note_seq, key)
-                new_note_seq_list.append(new_note_seq)
-            else:
-                new_note_seq_list.append(note_seq)
-        raw_list[3] = " ".join(new_note_seq_list)
-        f_w.write("|".join(raw_list))
-f_w.close()
+def trans_opencpop(raw_txt, res_txt, key):
+    if os.path.exists(raw_txt):
+        f_w = open(res_txt, "w", encoding='utf-8')
+        with open(raw_txt, "r", encoding='utf-8') as f:
+            raw_data = f.readlines()
+            for raw in raw_data:
+                raw_list = raw.split("|")
+                new_note_seq_list = []
+                for note_seq in raw_list[3].split(" "):
+                    if note_seq != "rest":
+                        note_seq = note_seq.split("/")[0] if "/" in note_seq else note_seq
+                        new_note_seq = move_key(note_seq, key)
+                        new_note_seq_list.append(new_note_seq)
+                    else:
+                        new_note_seq_list.append(note_seq)
+                raw_list[3] = " ".join(new_note_seq_list)
+                f_w.write("|".join(raw_list))
+        f_w.close()
+        print("opencpop标注文件转换完毕")
+    else:
+        print("未发现opencpop标注文件，请检查路径")
+

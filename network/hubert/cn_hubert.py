@@ -1,7 +1,4 @@
-from pathlib import Path
-
 import librosa
-import numpy as np
 import torch
 
 
@@ -40,19 +37,3 @@ def get_cn_hubert_units(con_model, audio_path, dev):
         logits = con_model.extract_features(**inputs)
         feats = con_model.final_proj(logits[0])
     return feats
-
-
-if __name__ == '__main__':
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model_path = "../../checkpoints/cn_hubert/chinese-hubert-base-fairseq-ckpt.pt"  # checkpoint_best_legacy_500.pt
-    zh_hubert_model = load_cn_model(model_path)
-    # 这个不用改，自动在根目录下所有wav的同文件夹生成其对应的npy
-    file_lists = list(Path("../../data/firefox").rglob('*.wav'))
-    nums = len(file_lists)
-    count = 0
-    for wav_path in file_lists:
-        npy_path = wav_path.with_suffix(".npy")
-        npy_content = get_cn_hubert_units(zh_hubert_model, str(wav_path), device).cpu().numpy()[0]
-        np.save(str(npy_path), npy_content)
-        count += 1
-        print(f"hubert process：{round(count * 100 / nums, 2)}%")
