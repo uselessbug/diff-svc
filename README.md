@@ -4,7 +4,9 @@ Singing Voice Conversion via diffusion model
 
 ## 本仓库为diff-svc fork修改版，新增辅助脚本、新hubert等，请自行评估并承担风险
 
-> 建议使用稳定版：[diff-svc](https://github.com/prophesier/diff-svc)
+> 建议使用稳定版：[diff-svc](https://github.com/prophesier/diff-svc) \
+> 项目教程在doc文件夹下，此魔改版问题请勿在原项目频道、discord等询问。 \
+> 同参数下，中文hubert所需训练步数约为soft hubert的1.5~2倍，不建议新手使用
 
 ## updates:
 
@@ -68,12 +70,6 @@ CUDA_VISIBLE_DEVICES=0 python run.py --config training/config.yaml --exp_name [y
 > 详细训练过程和各种参数介绍请查看[推理与训练说明](./doc/train_and_inference.markdown)\
 > Please refer to the [Inference and Training Instructions](./doc/training_and_inference_EN.markdown) for a detailed
 > training process and introduction to various parameters.Thank you for the translation provided by @ρoem.
-
-### 已训练模型/trained models
-
-> For English support, you can join this discord:
-
-[![Discord](https://img.shields.io/discord/1044927142900809739?color=%23738ADB&label=Discord&style=for-the-badge)](https://discord.gg/jvA5c2xzSE)
 
 ## Acknowledgements
 

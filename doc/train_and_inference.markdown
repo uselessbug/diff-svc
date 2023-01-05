@@ -17,8 +17,6 @@ pip install -r requirements.txt
 pip install -r requirements_short.txt
 ```
 
-> 3. 根目录下有一份@三千整理的依赖列表requirements.png，是在某品牌云服务器上跑通的，不过此torch版本已不兼容目前版本代码,但是其他部分版本可以参考，十分感谢
-
 ## 1.推理
 
 > 使用根目录下的inference.ipynb进行推理或使用经过作者适配的@小狼的infer.py\
