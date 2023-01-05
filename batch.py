@@ -14,7 +14,7 @@ from utils.hparams import hparams
 def run_clip(raw_audio_path, svc_model, key, acc, use_crepe, use_gt_mel=False, add_noise_step=500, units_mode=False):
     infer_tool.format_wav(raw_audio_path)
     _f0_tst, _f0_pred, _audio = svc_model.infer(raw_audio_path, key=key, acc=acc, use_crepe=use_crepe,
-                                                singer=True and units_mode, use_gt_mel=use_gt_mel,
+                                                singer=not units_mode, use_gt_mel=use_gt_mel,
                                                 add_noise_step=add_noise_step)
     if units_mode:
         out_path = io.BytesIO()
@@ -30,7 +30,7 @@ def run_clip(raw_audio_path, svc_model, key, acc, use_crepe, use_gt_mel=False, a
 if __name__ == '__main__':
     # 工程文件夹名，训练时用的那个
     project_name = "fox_cn"
-    model_path = f'./checkpoints/{project_name}/clean_model_ckpt_steps_120000.ckpt'
+    model_path = f'./checkpoints/{project_name}/clean_model_ckpt_steps_150000.ckpt'
     config_path = f'./checkpoints/{project_name}/config.yaml'
 
     # 此脚本为批量导出短音频（30s内）使用，同时生成f0、mel供diffsinger使用。
@@ -38,9 +38,9 @@ if __name__ == '__main__':
     wav_paths = infer_tool.get_end_file("./batch", "wav")
     trans = -6  # 音高调整，支持正负（半音）
     # 特化专用，开启此项后，仅导出变更音色的units至batch目录，其余项不输出；关闭此项则切换为对接diffsinger的套娃导出模式
-    units = True
+    units = False
     # 加速倍数
-    accelerate = 50
+    accelerate = 10
 
     # 仅支持opencpop标注文件，配合上方移调；使用时自行修改文件名、输出名（带txt后缀）
     if not units:
