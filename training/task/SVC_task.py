@@ -1,20 +1,16 @@
 import torch
+import torch.nn.functional as F
 
 import utils
-from utils.hparams import hparams
-from network.diff.net import DiffNet
-from network.diff.diffusion import GaussianDiffusion, OfflineGaussianDiffusion
-from training.task.fs2 import FastSpeech2Task
-from network.vocoders.base_vocoder import get_vocoder_cls, BaseVocoder
 from modules.fastspeech.tts_modules import mel2ph_to_dur
-
 from network.diff.candidate_decoder import FFT
-from utils.pitch_utils import denorm_f0
+from network.diff.diffusion import GaussianDiffusion
+from network.diff.net import DiffNet
+from network.vocoders.base_vocoder import get_vocoder_cls, BaseVocoder
 from training.dataset.fs2_utils import FastSpeechDataset
-
-import numpy as np
-import os
-import torch.nn.functional as F
+from training.task.fs2 import FastSpeech2Task
+from utils.hparams import hparams
+from utils.pitch_utils import denorm_f0
 
 DIFF_DECODERS = {
     'wavenet': lambda hp: DiffNet(hp['audio_num_mel_bins']),
@@ -34,18 +30,8 @@ class SVCTask(FastSpeech2Task):
         super(SVCTask, self).__init__()
         self.dataset_cls = SVCDataset
         self.vocoder: BaseVocoder = get_vocoder_cls(hparams)()
-    
+
     def build_tts_model(self):
-        # import torch
-        # from tqdm import tqdm
-        # v_min = torch.ones([80]) * 100
-        # v_max = torch.ones([80]) * -100
-        # for i, ds in enumerate(tqdm(self.dataset_cls('train'))):
-        #     v_max = torch.max(torch.max(ds['mel'].reshape(-1, 80), 0)[0], v_max)
-        #     v_min = torch.min(torch.min(ds['mel'].reshape(-1, 80), 0)[0], v_min)
-        #     if i % 100 == 0:
-        #         print(i, v_min, v_max)
-        # print('final', v_min, v_max)
         mel_bins = hparams['audio_num_mel_bins']
         self.model = GaussianDiffusion(
             phone_encoder=self.phone_encoder,
@@ -56,7 +42,6 @@ class SVCTask(FastSpeech2Task):
             spec_min=hparams['spec_min'], spec_max=hparams['spec_max'],
         )
 
-    
     def build_optimizer(self, model):
         self.optimizer = optimizer = torch.optim.AdamW(
             filter(lambda p: p.requires_grad, model.parameters()),
@@ -73,39 +58,23 @@ class SVCTask(FastSpeech2Task):
         '''
         hubert = sample['hubert']  # [B, T_t,H]
         target = sample['mels']  # [B, T_s, 80]
-        mel2ph = sample['mel2ph'] # [B, T_s]
+        mel2ph = sample['mel2ph']  # [B, T_s]
         f0 = sample['f0']
         uv = sample['uv']
         energy = sample['energy']
 
         spk_embed = sample.get('spk_embed') if not hparams['use_spk_id'] else sample.get('spk_ids')
-        if hparams['pitch_type'] == 'cwt':
-            # NOTE: this part of script is *isolated* from other scripts, which means
-            #       it may not be compatible with the current version.    
-            pass
-            # cwt_spec = sample[f'cwt_spec']
-            # f0_mean = sample['f0_mean']
-            # f0_std = sample['f0_std']
-            # sample['f0_cwt'] = f0 = model.cwt2f0_norm(cwt_spec, f0_mean, f0_std, mel2ph)
-
-        # output == ret
-        # model == src.diff.diffusion.GaussianDiffusion
         output = model(hubert, mel2ph=mel2ph, spk_embed=spk_embed,
                        ref_mels=target, f0=f0, uv=uv, energy=energy, infer=infer)
 
         losses = {}
         if 'diff_loss' in output:
             losses['mel'] = output['diff_loss']
-        #self.add_dur_loss(output['dur'], mel2ph, txt_tokens, sample['word_boundary'], losses=losses)
-        # if hparams['use_pitch_embed']:
-        #     self.add_pitch_loss(output, sample, losses)
-        # if hparams['use_energy_embed']:
-        #     self.add_energy_loss(output['energy_pred'], energy, losses)
         if not return_output:
             return losses
         else:
             return losses, output
-    
+
     def _training_step(self, sample, batch_idx, _):
         log_outputs = self.run_model(self.model, sample)
         total_loss = sum([v for v in log_outputs.values() if isinstance(v, torch.Tensor) and v.requires_grad])
@@ -143,8 +112,9 @@ class SVCTask(FastSpeech2Task):
         outputs = utils.tensors_to_scalars(outputs)
         if batch_idx < hparams['num_valid_plots']:
             model_out = self.model(
-                hubert, spk_embed=spk_embed, mel2ph=mel2ph, f0=sample['f0'], uv=sample['uv'], energy=energy, ref_mels=None, infer=True
-                )
+                hubert, spk_embed=spk_embed, mel2ph=mel2ph, f0=sample['f0'], uv=sample['uv'], energy=energy,
+                ref_mels=None, infer=True
+            )
 
             if hparams.get('pe_enable') is not None and hparams['pe_enable']:
                 gt_f0 = self.pe(sample['mels'])['f0_denorm_pred']  # pe predict from GT mel
@@ -154,7 +124,6 @@ class SVCTask(FastSpeech2Task):
                 pred_f0 = model_out.get('f0_denorm')
             self.plot_wav(batch_idx, sample['mels'], model_out['mel_out'], is_mel=True, gt_f0=gt_f0, f0=pred_f0)
             self.plot_mel(batch_idx, sample['mels'], model_out['mel_out'], name=f'diffmel_{batch_idx}')
-            #self.plot_mel(batch_idx, sample['mels'], model_out['fs2_mel'], name=f'fs2mel_{batch_idx}')
             if hparams['use_pitch_embed']:
                 self.plot_pitch(batch_idx, sample, model_out)
         return outputs
@@ -191,9 +160,7 @@ class SVCTask(FastSpeech2Task):
 
         # use linear scale for sent and word duration
         if hparams['lambda_word_dur'] > 0:
-            #idx = F.pad(wdb.cumsum(axis=1), (1, 0))[:, :-1]
             idx = wdb.cumsum(axis=1)
-            # word_dur_g = dur_gt.new_zeros([B, idx.max() + 1]).scatter_(1, idx, midi_dur)  # midi_dur can be implied by add gt-ph_dur
             word_dur_p = dur_pred.new_zeros([B, idx.max() + 1]).scatter_add(1, idx, dur_pred)
             word_dur_g = dur_gt.new_zeros([B, idx.max() + 1]).scatter_add(1, idx, dur_gt)
             wdur_loss = F.mse_loss((word_dur_p + 1).log(), (word_dur_g + 1).log(), reduction='none')
@@ -205,7 +172,7 @@ class SVCTask(FastSpeech2Task):
             sent_dur_g = dur_gt.sum(-1)
             sdur_loss = F.mse_loss((sent_dur_p + 1).log(), (sent_dur_g + 1).log(), reduction='mean')
             losses['sdur'] = sdur_loss.mean() * hparams['lambda_sent_dur']
-    
+
     ############
     # validation plots
     ############
@@ -217,7 +184,7 @@ class SVCTask(FastSpeech2Task):
         if is_mel:
             gt_wav = self.vocoder.spec2wav(gt_wav, f0=gt_f0)
             wav_out = self.vocoder.spec2wav(wav_out, f0=f0)
-        self.logger.experiment.add_audio(f'gt_{batch_idx}', gt_wav, sample_rate=hparams['audio_sample_rate'], global_step=self.global_step)
-        self.logger.experiment.add_audio(f'wav_{batch_idx}', wav_out, sample_rate=hparams['audio_sample_rate'], global_step=self.global_step)
-
-
+        self.logger.experiment.add_audio(f'gt_{batch_idx}', gt_wav, sample_rate=hparams['audio_sample_rate'],
+                                         global_step=self.global_step)
+        self.logger.experiment.add_audio(f'wav_{batch_idx}', wav_out, sample_rate=hparams['audio_sample_rate'],
+                                         global_step=self.global_step)

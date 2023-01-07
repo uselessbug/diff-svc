@@ -10,6 +10,7 @@ Singing Voice Conversion via diffusion model
 
 ## updates:
 
+> 2023.01.07 预处理新增f0_static超参统计音域，新增自适应变调功能(需f0_static，旧模型config可用data_static添加此超参)
 > 2023.01.05 \
 > 取消24k采样率、pe支持，删减部分参数、doc新增特化教程；batch.py支持特化、套娃两种模式的导出；\
 > pre_hubert为分步预处理（4g及以下内存预处理使用）；data_static为数据集音域统计（仅供参考）；中文hubert所需依赖fairseq请自行安装@小狼\

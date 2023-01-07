@@ -49,6 +49,9 @@ endless_ds: false
 f0_bin: 256
 f0_max: 1100.0
 f0_min: 50.0
+f0_static: '{"57.0": 0.66, "58.0": 0.12, "59.0": 0.7, "60.0": 0.13, "61.0": 1.77,
+  "62.0": 0.63, "63.0": 1.11, "64.0": 3.33, "65.0": 0.16, "66.0": 0.63, "67.0": 0.22,
+  "68.0": 1.46, "69.0": 1.74, "70.0": 0.03, "total_time": 12.69}'
 ffn_act: gelu
 ffn_padding: SAME
 fft_size: 512
@@ -88,6 +91,7 @@ mel_loss: ssim:0.5|l1:0.5
 mel_vmax: 1.5
 mel_vmin: -6.0
 min_level_db: -120
+no_fs2: true
 norm_type: gn
 num_ckpt_keep: 10
 num_heads: 2
@@ -334,8 +338,8 @@ use_spk_embed: false
 use_spk_id: false
 use_split_spk_id: false
 use_uv: false
-use_vec: false
 use_var_enc: false
+use_vec: false
 val_check_interval: 2000
 valid_num: 0
 valid_set_name: valid
@@ -346,4 +350,3 @@ wav2spec_eps: 1e-6
 weight_decay: 0
 win_size: 512
 work_dir: checkpoints/atri
-no_fs2: true

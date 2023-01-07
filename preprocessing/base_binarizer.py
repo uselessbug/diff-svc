@@ -1,22 +1,23 @@
-import os
-from webbrowser import get
-os.environ["OMP_NUM_THREADS"] = "1"
-import yaml
-from utils.multiprocess_utils import chunked_multiprocess_run
-import random
 import json
-# from resemblyzer import VoiceEncoder
-from tqdm import tqdm
-from preprocessing.data_gen_utils import get_mel2ph, get_pitch_parselmouth, build_phone_encoder,get_pitch_crepe
-from utils.hparams import set_hparams, hparams
+import os
+import random
+
 import numpy as np
+import yaml
+from tqdm import tqdm
+
+from infer_tools.data_static import collect_f0, merge_dict, static_time
+from preprocessing.data_gen_utils import get_mel2ph, get_pitch_parselmouth, build_phone_encoder, get_pitch_crepe
+from utils.hparams import set_hparams, hparams
 from utils.indexed_datasets import IndexedDatasetBuilder
+
+os.environ["OMP_NUM_THREADS"] = "1"
+BASE_ITEM_ATTRIBUTES = ['txt', 'ph', 'wav_fn', 'tg_fn', 'spk_id']
 
 
 class BinarizationError(Exception):
     pass
 
-BASE_ITEM_ATTRIBUTES = ['txt', 'ph', 'wav_fn', 'tg_fn', 'spk_id']
 
 class BaseBinarizer:
     '''
@@ -39,10 +40,10 @@ class BaseBinarizer:
         3. load_ph_set:
             the phoneme set.
     '''
+
     def __init__(self, item_attributes=BASE_ITEM_ATTRIBUTES):
         self.binarization_args = hparams['binarization_args']
-        #self.pre_align_args = hparams['pre_align_args']
-        
+
         self.items = {}
         # every item in self.items has some attributes
         self.item_attributes = item_attributes
@@ -51,11 +52,11 @@ class BaseBinarizer:
         # check program correctness 检查itemdict的key只能在给定的列表中取值
         assert all([attr in self.item_attributes for attr in list(self.items.values())[0].keys()])
         self.item_names = sorted(list(self.items.keys()))
-        
+
         if self.binarization_args['shuffle']:
             random.seed(1234)
             random.shuffle(self.item_names)
-        
+
         # set default get_pitch algorithm
         if hparams['use_crepe']:
             self.get_pitch_algorithm = get_pitch_crepe
@@ -68,7 +69,7 @@ class BaseBinarizer:
     @property
     def train_item_names(self):
         raise NotImplementedError
-        
+
     @property
     def valid_item_names(self):
         raise NotImplementedError
@@ -108,7 +109,6 @@ class BaseBinarizer:
             ph_set = json.load(open(ph_set_fn, 'r', encoding='utf-8'))
             print("| Load phone set: ", ph_set)
         return build_phone_encoder(hparams['binary_data_dir'])
-    
 
     def load_ph_set(self, ph_set):
         raise NotImplementedError
@@ -131,7 +131,7 @@ class BaseBinarizer:
         spk_map_fn = f"{hparams['binary_data_dir']}/spk_map.json"
         json.dump(self.spk_map, open(spk_map_fn, 'w', encoding='utf-8'))
 
-        self.phone_encoder =self._phone_encoder()
+        self.phone_encoder = self._phone_encoder()
         self.process_data_split('valid')
         self.process_data_split('test')
         self.process_data_split('train')
@@ -143,13 +143,12 @@ class BaseBinarizer:
         lengths = []
         f0s = []
         total_sec = 0
-        # if self.binarization_args['with_spk_embed']:
-        #     voice_encoder = VoiceEncoder().cuda()
 
         for item_name, meta_data in self.meta_data_iterator(prefix):
             args.append([item_name, meta_data, self.binarization_args])
-        spec_min=[]
-        spec_max=[]
+        spec_min = []
+        spec_max = []
+        f0_dict = {}
         # code for single cpu processing
         for i in tqdm(reversed(range(len(args))), total=len(args)):
             a = args[i]
@@ -158,29 +157,32 @@ class BaseBinarizer:
                 continue
             spec_min.append(item['spec_min'])
             spec_max.append(item['spec_max'])
-            # item['spk_embe'] = voice_encoder.embed_utterance(item['wav']) \
-            #     if self.binardization_args['with_spk_embed'] else None
+            f0_dict[item['wav_fn']] = collect_f0(item['f0'])
             if not self.binarization_args['with_wav'] and 'wav' in item:
                 if hparams['debug']:
                     print("del wav")
                 del item['wav']
-            if(hparams['debug']):
+            if hparams['debug']:
                 print(item)
             builder.add_item(item)
             lengths.append(item['len'])
             total_sec += item['sec']
-            # if item.get('f0') is not None:
-            #     f0s.append(item['f0'])
-        if prefix=='train':
-            spec_max=np.max(spec_max,0)
-            spec_min=np.min(spec_min,0)
+        if prefix == 'train':
+            spec_max = np.max(spec_max, 0)
+            spec_min = np.min(spec_min, 0)
             print(spec_max.shape)
+            pitch_num = merge_dict(f0_dict.values())
+            pitch_time = static_time(pitch_num)
+            total_time = round(sum(pitch_time.values()), 2)
+            pitch_time['total_time'] = total_time
+            print(f"total time: {total_time}s")
             with open(hparams['config_path'], encoding='utf-8') as f:
-                _hparams=yaml.safe_load(f)
-                _hparams['spec_max']=spec_max.tolist()
-                _hparams['spec_min']=spec_min.tolist()
+                _hparams = yaml.safe_load(f)
+                _hparams['spec_max'] = spec_max.tolist()
+                _hparams['spec_min'] = spec_min.tolist()
+                _hparams['f0_static'] = json.dumps(pitch_time)
             with open(hparams['config_path'], 'w', encoding='utf-8') as f:
-                yaml.safe_dump(_hparams,f)
+                yaml.safe_dump(_hparams, f)
         builder.finalize()
         np.save(f'{data_dir}/{prefix}_lengths.npy', lengths)
         if len(f0s) > 0:

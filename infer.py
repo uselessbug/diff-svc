@@ -1,4 +1,5 @@
 import io
+import json
 from pathlib import Path
 
 import numpy as np
@@ -6,17 +7,27 @@ import soundfile
 
 from infer_tools import infer_tool
 from infer_tools import slicer
+from infer_tools.data_static import evaluate_key
 from infer_tools.infer_tool import Svc
 from utils.hparams import hparams
 
 
-def run_clip(raw_audio_path, svc_model, key, acc, use_crepe, use_gt_mel=False, add_noise_step=500, out_path=None,
-             slice_db=-40, **kwargs):
+def run_clip(raw_audio_path, svc_model, key, acc, use_crepe, auto_key=False, use_gt_mel=False, add_noise_step=500,
+             out_path=None, slice_db=-40, **kwargs):
     print(f'code version:2023-01-05')
 
     clean_name = Path(raw_audio_path).name.split(".")[0]
     infer_tool.format_wav(raw_audio_path)
     wav_path = Path(raw_audio_path).with_suffix('.wav')
+
+    if "f0_static" in hparams.keys():
+        f0_static = json.loads(hparams['f0_static'])
+        best_key = evaluate_key(wav_path, f0_static)[0]
+        print(f"推荐移调:{best_key}")
+        if auto_key:
+            print(f"自动变调已启用，您的输入key被{best_key}key覆盖，控制参数为auto_key")
+            key = best_key
+
     chunks = slicer.cut(wav_path, db_thresh=slice_db)
     audio_data, audio_sr = slicer.chunks2audio(wav_path, chunks)
 
@@ -53,11 +64,13 @@ def run_clip(raw_audio_path, svc_model, key, acc, use_crepe, use_gt_mel=False, a
 if __name__ == '__main__':
     # 工程文件夹名，训练时用的那个
     project_name = "fox_cn"
-    model_path = f'./checkpoints/{project_name}/clean_model_ckpt_steps_120000.ckpt'
+    model_path = f'./checkpoints/{project_name}/model_ckpt_steps_370000.ckpt'
     config_path = f'./checkpoints/{project_name}/config.yaml'
 
     # 支持多个wav/ogg文件，放在raw文件夹下，带扩展名
     file_names = ["逍遥仙"]
+    # 自适应变调
+    auto_key = False
     trans = [0]  # 音高调整，支持正负（半音），数量与上一行对应，不足的自动按第一个移调参数补齐
     # 加速倍数
     accelerate = 20
@@ -75,4 +88,4 @@ if __name__ == '__main__':
             f_name += ".wav"
         audio_path = f"./raw/{f_name}"
         run_clip(raw_audio_path=audio_path, svc_model=model, key=tran, acc=accelerate, use_crepe=False,
-                 project_name=project_name, format=wav_format)
+                 auto_key=auto_key, project_name=project_name, format=wav_format)

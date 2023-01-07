@@ -1,4 +1,5 @@
 import io
+import json
 import os.path
 from pathlib import Path
 
@@ -6,13 +7,21 @@ import numpy as np
 import soundfile
 
 from infer_tools import infer_tool
+from infer_tools.data_static import evaluate_key
 from infer_tools.infer_tool import Svc
 from infer_tools.trans_key import trans_opencpop
 from utils.hparams import hparams
 
 
-def run_clip(raw_audio_path, svc_model, key, acc, use_crepe, use_gt_mel=False, add_noise_step=500, units_mode=False):
+def run_clip(raw_audio_path, svc_model, key, acc, use_crepe, auto_key=False, use_gt_mel=False, add_noise_step=500,
+             units_mode=False):
     infer_tool.format_wav(raw_audio_path)
+    if "f0_static" in hparams.keys():
+        f0_static = json.loads(hparams['f0_static'])
+        best_key = evaluate_key(raw_audio_path, f0_static)[0]
+        if auto_key:
+            print(f"自动变调已启用，您的变调参数被{best_key}key覆盖，控制参数为auto_key")
+            key = best_key
     _f0_tst, _f0_pred, _audio = svc_model.infer(raw_audio_path, key=key, acc=acc, use_crepe=use_crepe,
                                                 singer=not units_mode, use_gt_mel=use_gt_mel,
                                                 add_noise_step=add_noise_step)
@@ -30,7 +39,7 @@ def run_clip(raw_audio_path, svc_model, key, acc, use_crepe, use_gt_mel=False, a
 if __name__ == '__main__':
     # 工程文件夹名，训练时用的那个
     project_name = "fox_cn"
-    model_path = f'./checkpoints/{project_name}/clean_model_ckpt_steps_150000.ckpt'
+    model_path = f'./checkpoints/{project_name}/clean_model_ckpt_steps_260000.ckpt'
     config_path = f'./checkpoints/{project_name}/config.yaml'
 
     # 此脚本为批量导出短音频（30s内）使用，同时生成f0、mel供diffsinger使用。
@@ -38,7 +47,9 @@ if __name__ == '__main__':
     wav_paths = infer_tool.get_end_file("./batch", "wav")
     trans = -6  # 音高调整，支持正负（半音）
     # 特化专用，开启此项后，仅导出变更音色的units至batch目录，其余项不输出；关闭此项则切换为对接diffsinger的套娃导出模式
-    units = False
+    units = True
+    # 自适应变调，不懂别开
+    auto_key = False
     # 加速倍数
     accelerate = 10
 
@@ -53,6 +64,7 @@ if __name__ == '__main__':
     for audio_path in wav_paths:
         count += 1
         if os.path.exists(Path(audio_path).with_suffix(".npy")) and units:
+            print(f"{audio_path}:units已存在，跳过")
             continue
-        run_clip(audio_path, model, trans, accelerate, use_crepe=False, units_mode=units)
+        run_clip(audio_path, model, trans, accelerate, auto_key=auto_key, use_crepe=False, units_mode=units)
         print(f"\r\nnum:{count}\r\ntotal process:{round(count * 100 / len(wav_paths), 2)}%\r\n")
