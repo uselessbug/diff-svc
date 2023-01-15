@@ -1,31 +1,27 @@
 from multiprocessing.pool import Pool
 
 import matplotlib
+import numpy as np
+import torch
+import torch.distributed as dist
+import torch.optim
+import torch.utils.data
+from tqdm import tqdm
 
-from network.vocoders.base_vocoder import get_vocoder_cls, BaseVocoder
+import utils
+from network.vocoders.nsf_hifigan import NsfHifiGAN, nsf_hifigan
+from preprocessing.hubertinfer import Hubertencoder
+from training.task.base_task import BaseTask
+from utils.hparams import hparams
 from utils.training_utils import RSQRTSchedule
 
 matplotlib.use('Agg')
-import numpy as np
-from tqdm import tqdm
-import torch.distributed as dist
-
-from training.task.base_task import BaseTask
-from utils.hparams import hparams
-from preprocessing.hubertinfer import Hubertencoder
-import torch
-import torch.optim
-import torch.utils.data
-import utils
 
 
 class TtsTask(BaseTask):
     def __init__(self, *args, **kwargs):
-        self.vocoder = None
+        self.vocoder = NsfHifiGAN()
         self.phone_encoder = Hubertencoder(hparams['hubert_path'])
-        # self.padding_idx = self.phone_encoder.pad()
-        # self.eos_idx = self.phone_encoder.eos()
-        # self.seg_idx = self.phone_encoder.seg()
         self.saving_result_pool = None
         self.saving_results_futures = None
         self.stats = {}
@@ -86,12 +82,6 @@ class TtsTask(BaseTask):
                                            num_workers=num_workers,
                                            pin_memory=False)
 
-    # def build_phone_encoder(self, data_dir):
-    #     phone_list_file = os.path.join(data_dir, 'phone_set.json')
-
-    #     phone_list = json.load(open(phone_list_file, encoding='utf-8'))
-    #     return TokenTextEncoder(None, vocab_list=phone_list, replace_oov=',')
-
     def build_optimizer(self, model):
         self.optimizer = optimizer = torch.optim.AdamW(
             model.parameters(),
@@ -101,7 +91,7 @@ class TtsTask(BaseTask):
     def test_start(self):
         self.saving_result_pool = Pool(8)
         self.saving_results_futures = []
-        self.vocoder: BaseVocoder = get_vocoder_cls(hparams)()
+        self.vocoder = nsf_hifigan
 
     def test_end(self, outputs):
         self.saving_result_pool.close()

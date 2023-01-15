@@ -5,7 +5,6 @@ import yaml
 
 solutions = {'yaml': 'yaml路径不正确，可能导致yaml污染或预处理失败\r\n',
              'hubert': 'hubert不存在，请到群文件里下载hubert_torch.zip并解压到checkpoints文件夹下\r\n',
-             'pe': 'pe不存在，请到群文件里下载basics.zip并解压到checkpoints文件夹下\r\n',
              'raw_data_dir': '数据集目录与yaml不匹配，请检查数据集目录与yaml内"raw_data_dir:"栏是否匹配\r\n',
              'vocoder': "与yaml匹配的声码器不存在，24k声码器请到群文件里下载basics.zip并解压到checkpoints文件夹下\r\n44.1k声码器请到“https://github.com/openvpi/vocoders”github发布页下载并解压到checkpoints下\r\n如已下载并解压，请核对声码器文件名与yaml内“vocoder_ckpt:”栏的声码器文件名与checkpoints文件夹下声码器文件夹内的声码器文件名是否匹配\r\n",
              'torch': '你未安装torch三件套或torch三件套异常,解决方法见语雀安装torch相关，\r\n复制链接粘贴到浏览器即可直达相关网页:\r\n通用命令安装torch：https://www.yuque.com/jiuwei-nui3d/qng6eg/sc8ivoge8vww4lu6#9mQgt\r\nwindows下手动安装torch：https://www.yuque.com/jiuwei-nui3d/qng6eg/ea0ntd\r\n',
@@ -107,7 +106,7 @@ if __name__ == '__main__':
         project_path = path_list[int(a)]
         with open(project_path, "r") as f:
             data = yaml.safe_load(f)
-        test_model = {'yaml': data["config_path"], 'hubert': data["hubert_path"], 'pe': data["pe_ckpt"],
+        test_model = {'yaml': data["config_path"], 'hubert': data["hubert_path"],
                       'raw_data_dir': data["raw_data_dir"], 'vocoder': data["vocoder_ckpt"],
                       'config_path': data["config_path"]}
         try_except()

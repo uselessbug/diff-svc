@@ -10,30 +10,16 @@ import yaml
 from pylab import xticks, np
 from tqdm import tqdm
 
-from network.vocoders.base_vocoder import VOCODERS
+from network.vocoders.nsf_hifigan import NsfHifiGAN
 from preprocessing.data_gen_utils import get_pitch_parselmouth, get_pitch_crepe
-from utils.hparams import set_hparams
+from utils.hparams import set_hparams, hparams
 
 head_list = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-
-hparams = {'audio_sample_rate': 44100, "f0_max": 1100, "f0_min": 40, "f0_bin": 256, "hop_size": 512}
 
 
 def compare_pitch(f0_static_dict, pitch_time_temp, trans_key=0):
     return sum({k: v * f0_static_dict[str(k + trans_key)] for k, v in pitch_time_temp.items() if
                 str(k + trans_key) in f0_static_dict}.values())
-
-
-def evaluate_key(input_wav_path, f0_static_dict, scan_key=True, reverse=True):
-    pitch_time_temp = static_time(collect_f0(get_f0(input_wav_path, crepe=False)))
-    eval_dict = {}
-    if scan_key:
-        for trans_key in range(-12, 12):
-            eval_dict[trans_key] = compare_pitch(f0_static_dict, pitch_time_temp, trans_key=trans_key)
-    else:
-        eval_dict[0] = compare_pitch(f0_static_dict, pitch_time_temp)
-    sort_key = sorted(eval_dict, key=eval_dict.get, reverse=reverse)[:5]
-    return sort_key
 
 
 def f0_to_pitch(ff):
@@ -46,7 +32,7 @@ def pitch_to_name(pitch):
 
 
 def get_f0(audio_path, crepe=False):
-    wav, mel = VOCODERS["NsfHifiGAN"].wav2spec(audio_path)
+    wav, mel = NsfHifiGAN.wav2spec(audio_path)
     if crepe:
         f0, pitch_coarse = get_pitch_crepe(wav, mel, hparams)
     else:
@@ -54,7 +40,7 @@ def get_f0(audio_path, crepe=False):
     return f0
 
 
-def merge_dict(dict_list):
+def merge_f0_dict(dict_list):
     def sum_dict(a, b):
         temp = dict()
         for key in a.keys() | b.keys():
@@ -72,12 +58,16 @@ def collect_f0(f0):
     return pitch_num
 
 
-def static_time(pitch_num):
-    pitch_time = {}
+def static_time(f0):
+    if isinstance(f0, dict):
+        pitch_num = merge_f0_dict({k: collect_f0(v) for k, v in f0.items()}.values())
+    else:
+        pitch_num = collect_f0(f0)
+    static_pitch_time = {}
     sort_key = sorted(pitch_num.keys())
     for key in sort_key:
-        pitch_time[key] = round(pitch_num[key] * hparams['hop_size'] / hparams['audio_sample_rate'], 2)
-    return pitch_time
+        static_pitch_time[key] = round(pitch_num[key] * hparams['hop_size'] / hparams['audio_sample_rate'], 2)
+    return static_pitch_time
 
 
 def get_end_file(dir_path, end):
@@ -93,7 +83,7 @@ def get_end_file(dir_path, end):
 
 if __name__ == "__main__":
     # 给config文件增加f0_static统计音域
-    config_path = "../training/config.yaml"
+    config_path = "../training/config_nsf.yaml"
     hparams = set_hparams(config=config_path, exp_name='', infer=True, reset=True, hparams_str='', print_hparams=False)
     f0_dict = {}
     # 获取batch文件夹下所有wav文件
@@ -102,11 +92,9 @@ if __name__ == "__main__":
     with tqdm(total=len(wav_paths)) as p_bar:
         p_bar.set_description('Processing')
         for wav_path in wav_paths:
-            f0_dict[wav_path] = collect_f0(get_f0(wav_path, crepe=False))
+            f0_dict[wav_path] = get_f0(wav_path, crepe=False)
             p_bar.update(1)
-
-    pitch_num = merge_dict(f0_dict.values())
-    pitch_time = static_time(pitch_num)
+    pitch_time = static_time(f0_dict)
     total_time = round(sum(pitch_time.values()), 2)
     pitch_time["total_time"] = total_time
     print(f"total time: {total_time}s")

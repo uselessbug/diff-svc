@@ -6,7 +6,7 @@ from modules.fastspeech.tts_modules import mel2ph_to_dur
 from network.diff.candidate_decoder import FFT
 from network.diff.diffusion import GaussianDiffusion
 from network.diff.net import DiffNet
-from network.vocoders.base_vocoder import get_vocoder_cls, BaseVocoder
+from network.vocoders.nsf_hifigan import nsf_hifigan
 from training.dataset.fs2_utils import FastSpeechDataset
 from training.task.fs2 import FastSpeech2Task
 from utils.hparams import hparams
@@ -29,7 +29,6 @@ class SVCTask(FastSpeech2Task):
     def __init__(self):
         super(SVCTask, self).__init__()
         self.dataset_cls = SVCDataset
-        self.vocoder: BaseVocoder = get_vocoder_cls(hparams)()
 
     def build_tts_model(self):
         mel_bins = hparams['audio_num_mel_bins']
@@ -116,12 +115,8 @@ class SVCTask(FastSpeech2Task):
                 ref_mels=None, infer=True
             )
 
-            if hparams.get('pe_enable') is not None and hparams['pe_enable']:
-                gt_f0 = self.pe(sample['mels'])['f0_denorm_pred']  # pe predict from GT mel
-                pred_f0 = self.pe(model_out['mel_out'])['f0_denorm_pred']  # pe predict from Pred mel
-            else:
-                gt_f0 = denorm_f0(sample['f0'], sample['uv'], hparams)
-                pred_f0 = model_out.get('f0_denorm')
+            gt_f0 = denorm_f0(sample['f0'], sample['uv'], hparams)
+            pred_f0 = model_out.get('f0_denorm')
             self.plot_wav(batch_idx, sample['mels'], model_out['mel_out'], is_mel=True, gt_f0=gt_f0, f0=pred_f0)
             self.plot_mel(batch_idx, sample['mels'], model_out['mel_out'], name=f'diffmel_{batch_idx}')
             if hparams['use_pitch_embed']:

@@ -1,10 +1,9 @@
-from io import BytesIO
 import json
-import os
 import re
 import struct
 import warnings
 from collections import OrderedDict
+from io import BytesIO
 
 import librosa
 import numpy as np
@@ -19,7 +18,6 @@ from skimage.transform import resize
 
 from utils import audio
 from utils.pitch_utils import f0_to_coarse
-from utils.text_encoder import TokenTextEncoder
 
 warnings.filterwarnings("ignore")
 PUNCS = '!,.?;:'
@@ -182,8 +180,8 @@ def get_pitch_parselmouth(wav_data, mel, hparams):
     # if delta_l > 0:
     #     f0 = np.concatenate([f0, [f0[-1]] * delta_l], 0)
     # f0 = f0[:len(mel)]
-    pad_size=(int(len(wav_data) // hparams['hop_size']) - len(f0) + 1) // 2
-    f0 = np.pad(f0,[[pad_size,len(mel) - len(f0) - pad_size]], mode='constant')
+    pad_size = (int(len(wav_data) // hparams['hop_size']) - len(f0) + 1) // 2
+    f0 = np.pad(f0, [[pad_size, len(mel) - len(f0) - pad_size]], mode='constant')
     pitch_coarse = f0_to_coarse(f0, hparams)
     return f0, pitch_coarse
 
@@ -381,12 +379,6 @@ def get_mel2ph(tg_fn, ph, mel, hparams):
     dur = mel2ph_torch.new_zeros([T_t + 1]).scatter_add(0, mel2ph_torch, torch.ones_like(mel2ph_torch))
     dur = dur[1:].numpy()
     return mel2ph, dur
-
-
-def build_phone_encoder(data_dir):
-    phone_list_file = os.path.join(data_dir, 'phone_set.json')
-    phone_list = json.load(open(phone_list_file, encoding='utf-8'))
-    return TokenTextEncoder(None, vocab_list=phone_list, replace_oov=',')
 
 
 def is_sil_phoneme(p):

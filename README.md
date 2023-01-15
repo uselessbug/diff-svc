@@ -10,7 +10,10 @@ Singing Voice Conversion via diffusion model
 
 ## updates:
 
-> 2023.01.07 预处理新增f0_static超参统计音域，新增自适应变调功能(需f0_static，旧模型config可用data_static添加此超参)
+> 2023.01.09 \
+> 新增select.py筛选数据集音域（数据量足够时，删去重复音域部分，加快高低音收敛）\
+> 删除24k的pe、hifigan等依赖，删除pitch cwt模式，infer复用预处理部分代码@小狼
+> 2023.01.07 预处理新增f0_static超参统计音域，新增自适应变调功能(需f0_static，旧模型config可用data_static添加此超参)@小狼
 > 2023.01.05 \
 > 取消24k采样率、pe支持，删减部分参数、doc新增特化教程；batch.py支持特化、套娃两种模式的导出；\
 > pre_hubert为分步预处理（4g及以下内存预处理使用）；data_static为数据集音域统计（仅供参考）；中文hubert所需依赖fairseq请自行安装@小狼\
@@ -69,8 +72,7 @@ CUDA_VISIBLE_DEVICES=0 python run.py --config training/config.yaml --exp_name [y
 ```
 
 > 详细训练过程和各种参数介绍请查看[推理与训练说明](./doc/train_and_inference.markdown)\
-> Please refer to the [Inference and Training Instructions](./doc/training_and_inference_EN.markdown) for a detailed
-> training process and introduction to various parameters.Thank you for the translation provided by @ρoem.
+> 中文hubert与特化教程[特化教程](./doc/advanced_skills.markdown)\
 
 ## Acknowledgements
 

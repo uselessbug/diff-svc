@@ -1,30 +1,30 @@
+import os
+from multiprocessing.pool import Pool
+
 import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+import torch.distributions
+import torch.nn.functional as F
+import torch.optim
+import torch.utils.data
+from tqdm import tqdm
+
+import utils
+from modules.commons.ssim import ssim
+from modules.fastspeech.tts_modules import mel2ph_to_dur
+from preprocessing.data_gen_utils import get_pitch_parselmouth
+from training.dataset.fs2_utils import FastSpeechDataset
+from training.task.tts import TtsTask
+from utils import audio
+from utils.hparams import hparams
+from utils.pitch_utils import denorm_f0
+from utils.pl_utils import data_loader
+from utils.plot import spec_to_figure, dur_to_figure, f0_to_figure
 
 matplotlib.use('Agg')
 
-from utils import audio
-import matplotlib.pyplot as plt
-from preprocessing.data_gen_utils import get_pitch_parselmouth
-from training.dataset.fs2_utils import FastSpeechDataset
-from utils.cwt import cwt2f0
-from utils.pl_utils import data_loader
-import os
-from multiprocessing.pool import Pool
-from tqdm import tqdm
-from modules.fastspeech.tts_modules import mel2ph_to_dur
-from utils.hparams import hparams
-from utils.plot import spec_to_figure, dur_to_figure, f0_to_figure
-from utils.pitch_utils import denorm_f0
-from modules.fastspeech.fs2 import FastSpeech2
-from training.task.tts import TtsTask
-import torch
-import torch.optim
-import torch.utils.data
-import torch.nn.functional as F
-import utils
-import torch.distributions
-import numpy as np
-from modules.commons.ssim import ssim
 
 class FastSpeech2Task(TtsTask):
     def __init__(self):
@@ -43,7 +43,7 @@ class FastSpeech2Task(TtsTask):
                 lbd = 1.0
             self.loss_and_lambda[l] = lbd
         print("| Mel losses:", self.loss_and_lambda)
-        #self.sil_ph = self.phone_encoder.sil_phonemes()
+        # self.sil_ph = self.phone_encoder.sil_phonemes()
 
     @data_loader
     def train_dataloader(self):
@@ -63,9 +63,9 @@ class FastSpeech2Task(TtsTask):
                                      self.max_eval_sentences, batch_by_size=False)
 
     def build_tts_model(self):
-        '''
+        """
         rewrite
-        '''
+        """
         return
         # self.model = FastSpeech2(self.phone_encoder)
 
@@ -77,9 +77,9 @@ class FastSpeech2Task(TtsTask):
         return self.model
 
     def _training_step(self, sample, batch_idx, _):
-        '''
+        """
         rewrite
-        '''
+        """
         return
         # loss_output = self.run_model(self.model, sample)
         # total_loss = sum([v for v in loss_output.values() if isinstance(v, torch.Tensor) and v.requires_grad])
@@ -87,9 +87,9 @@ class FastSpeech2Task(TtsTask):
         # return total_loss, loss_output
 
     def validation_step(self, sample, batch_idx):
-        '''
+        """
         rewrite
-        '''
+        """
         return
         # outputs = {}
         # outputs['losses'] = {}
@@ -119,9 +119,9 @@ class FastSpeech2Task(TtsTask):
         return {k: round(v.avg, 4) for k, v in all_losses_meter.items()}
 
     def run_model(self, model, sample, return_output=False):
-        '''
+        """
         rewrite
-        '''
+        """
         return
         txt_tokens = sample['txt_tokens']  # [B, T_t]
         target = sample['mels']  # [B, T_s, 80]
@@ -130,12 +130,6 @@ class FastSpeech2Task(TtsTask):
         uv = sample['uv']
         energy = sample['energy']
         spk_embed = sample.get('spk_embed') if not hparams['use_spk_id'] else sample.get('spk_ids')
-        if hparams['pitch_type'] == 'cwt':
-            cwt_spec = sample[f'cwt_spec']
-            f0_mean = sample['f0_mean']
-            f0_std = sample['f0_std']
-            sample['f0_cwt'] = f0 = model.cwt2f0_norm(cwt_spec, f0_mean, f0_std, mel2ph)
-
         output = model(txt_tokens, mel2ph=mel2ph, spk_embed=spk_embed,
                        ref_mels=target, f0=f0, uv=uv, energy=energy, infer=False)
 
@@ -244,25 +238,7 @@ class FastSpeech2Task(TtsTask):
         f0 = sample['f0']
         uv = sample['uv']
         nonpadding = (mel2ph != 0).float()
-        if hparams['pitch_type'] == 'cwt':
-            cwt_spec = sample[f'cwt_spec']
-            f0_mean = sample['f0_mean']
-            f0_std = sample['f0_std']
-            cwt_pred = output['cwt'][:, :, :10]
-            f0_mean_pred = output['f0_mean']
-            f0_std_pred = output['f0_std']
-            losses['C'] = self.cwt_loss(cwt_pred, cwt_spec) * hparams['lambda_f0']
-            if hparams['use_uv']:
-                assert output['cwt'].shape[-1] == 11
-                uv_pred = output['cwt'][:, :, -1]
-                losses['uv'] = (F.binary_cross_entropy_with_logits(uv_pred, uv, reduction='none') * nonpadding) \
-                                   .sum() / nonpadding.sum() * hparams['lambda_uv']
-            losses['f0_mean'] = F.l1_loss(f0_mean_pred, f0_mean) * hparams['lambda_f0']
-            losses['f0_std'] = F.l1_loss(f0_std_pred, f0_std) * hparams['lambda_f0']
-            if hparams['cwt_add_f0_loss']:
-                f0_cwt_ = self.model.cwt2f0_norm(cwt_pred, f0_mean_pred, f0_std_pred, mel2ph)
-                self.add_f0_loss(f0_cwt_[:, :, None], f0, uv, losses, nonpadding=nonpadding)
-        elif hparams['pitch_type'] == 'frame':
+        if hparams['pitch_type'] == 'frame':
             self.add_f0_loss(output['pitch_pred'], f0, uv, losses, nonpadding=nonpadding)
 
     def add_f0_loss(self, p_pred, f0, uv, losses, nonpadding):
@@ -282,20 +258,11 @@ class FastSpeech2Task(TtsTask):
         elif hparams['pitch_loss'] == 'ssim':
             return NotImplementedError
 
-    def cwt_loss(self, cwt_p, cwt_g):
-        if hparams['cwt_loss'] == 'l1':
-            return F.l1_loss(cwt_p, cwt_g)
-        if hparams['cwt_loss'] == 'l2':
-            return F.mse_loss(cwt_p, cwt_g)
-        if hparams['cwt_loss'] == 'ssim':
-            return self.ssim_loss(cwt_p, cwt_g, 20)
-
     def add_energy_loss(self, energy_pred, energy, losses):
         nonpadding = (energy != 0).float()
         loss = (F.mse_loss(energy_pred, energy, reduction='none') * nonpadding).sum() / nonpadding.sum()
         loss = loss * hparams['lambda_energy']
         losses['e'] = loss
-
 
     ############
     # validation plots
@@ -326,24 +293,7 @@ class FastSpeech2Task(TtsTask):
                 f'f0_{batch_idx}', f0_to_figure(f0[0], None, f0_pred[0]), self.global_step)
             return
         f0 = denorm_f0(f0, sample['uv'], hparams)
-        if hparams['pitch_type'] == 'cwt':
-            # cwt
-            cwt_out = model_out['cwt']
-            cwt_spec = cwt_out[:, :, :10]
-            cwt = torch.cat([cwt_spec, sample['cwt_spec']], -1)
-            self.logger.experiment.add_figure(f'cwt_{batch_idx}', spec_to_figure(cwt[0]), self.global_step)
-            # f0
-            f0_pred = cwt2f0(cwt_spec, model_out['f0_mean'], model_out['f0_std'], hparams['cwt_scales'])
-            if hparams['use_uv']:
-                assert cwt_out.shape[-1] == 11
-                uv_pred = cwt_out[:, :, -1] > 0
-                f0_pred[uv_pred > 0] = 0
-            f0_cwt = denorm_f0(sample['f0_cwt'], sample['uv'], hparams)
-            self.logger.experiment.add_figure(
-                f'f0_{batch_idx}', f0_to_figure(f0[0], f0_cwt[0], f0_pred[0]), self.global_step)
-        elif hparams['pitch_type'] == 'frame':
-            # f0
-            #uv_pred = model_out['pitch_pred'][:, :, 0] > 0
+        if hparams['pitch_type'] == 'frame':
             pitch_pred = denorm_f0(model_out['pitch_pred'][:, :, 0], sample['uv'], hparams)
             self.logger.experiment.add_figure(
                 f'f0_{batch_idx}', f0_to_figure(f0[0], None, pitch_pred[0]), self.global_step)
@@ -361,10 +311,10 @@ class FastSpeech2Task(TtsTask):
         else:
             # if hparams['use_gt_dur']:
             mel2ph = sample['mel2ph']
-            #if hparams['use_gt_f0']:
+            # if hparams['use_gt_f0']:
             f0 = sample['f0']
             uv = sample['uv']
-                #print('Here using gt f0!!')
+            # print('Here using gt f0!!')
             if hparams.get('use_midi') is not None and hparams['use_midi']:
                 outputs = self.model(
                     hubert, spk_embed=spk_embed, mel2ph=mel2ph, f0=f0, uv=uv, ref_mels=ref_mels, infer=True)
@@ -373,12 +323,8 @@ class FastSpeech2Task(TtsTask):
                     hubert, spk_embed=spk_embed, mel2ph=mel2ph, f0=f0, uv=uv, ref_mels=ref_mels, infer=True)
             sample['outputs'] = self.model.out2mel(outputs['mel_out'])
             sample['mel2ph_pred'] = outputs['mel2ph']
-            if hparams.get('pe_enable') is not None and hparams['pe_enable']:
-                sample['f0'] = self.pe(sample['mels'])['f0_denorm_pred']  # pe predict from GT mel
-                sample['f0_pred'] = self.pe(sample['outputs'])['f0_denorm_pred']  # pe predict from Pred mel
-            else:
-                sample['f0'] = denorm_f0(sample['f0'], sample['uv'], hparams)
-                sample['f0_pred'] = outputs.get('f0_denorm')
+            sample['f0'] = denorm_f0(sample['f0'], sample['uv'], hparams)
+            sample['f0_pred'] = outputs.get('f0_denorm')
             return self.after_infer(sample)
 
     def after_infer(self, predictions):
@@ -393,7 +339,6 @@ class FastSpeech2Task(TtsTask):
                     prediction[k] = v.cpu().numpy()
 
             item_name = prediction.get('item_name')
-            #text = prediction.get('text').replace(":", "%3A")[:80]
 
             # remove paddings
             mel_gt = prediction["mels"]
@@ -414,31 +359,14 @@ class FastSpeech2Task(TtsTask):
                 mel2ph_pred = mel2ph_pred[mel_pred_mask]
 
             f0_gt = prediction.get("f0")
-            f0_pred = f0_gt#prediction.get("f0_pred")
+            f0_pred = f0_gt
             if f0_pred is not None:
                 f0_gt = f0_gt[mel_gt_mask]
                 if len(f0_pred) > len(mel_pred_mask):
                     f0_pred = f0_pred[:len(mel_pred_mask)]
                 f0_pred = f0_pred[mel_pred_mask]
-            text=None
+            text = None
             str_phs = None
-            # if self.phone_encoder is not None and 'txt_tokens' in prediction:
-            #     str_phs = self.phone_encoder.decode(prediction['txt_tokens'], strip_padding=True)
-            # def resize2d(source, target_len):
-            #     source[source<0.001] = np.nan
-            #     target = np.interp(np.linspace(0, len(source)-1, num=target_len,endpoint=True), np.arange(0, len(source)), source)
-            #     return np.nan_to_num(target)
-            # def resize3d(source, target_len):
-            #     newsource=[]
-            #     for i in range(source.shape[1]):
-            #         newsource.append(resize2d(source[:,i],target_len))
-            #     return np.array(newsource).transpose()
-            # print(mel_pred.shape)
-            # print(f0_pred.shape)
-            # mel_pred=resize3d(mel_pred,int(mel_pred.shape[0]/44100*24000))
-            # f0_pred=resize2d(f0_pred,int(f0_pred.shape[0]/44100*24000))
-            # print(mel_pred.shape)
-            # print(f0_pred.shape)
             gen_dir = os.path.join(hparams['work_dir'],
                                    f'generated_{self.trainer.global_step}_{hparams["gen_dir_name"]}')
             wav_pred = self.vocoder.spec2wav(mel_pred, f0=f0_pred)
@@ -459,17 +387,11 @@ class FastSpeech2Task(TtsTask):
                             wav_gt, mel_gt, 'G', item_name, text, gen_dir, str_phs, mel2ph_gt, f0_gt, f0_pred]))
                     if hparams['save_f0']:
                         import matplotlib.pyplot as plt
-                        # f0_pred_, _ = get_pitch(wav_pred, mel_pred, hparams)
                         f0_pred_ = f0_pred
                         f0_gt_, _ = get_pitch_parselmouth(wav_gt, mel_gt, hparams)
                         fig = plt.figure()
                         plt.plot(f0_pred_, label=r'$f0_P$')
                         plt.plot(f0_gt_, label=r'$f0_G$')
-                        if hparams.get('pe_enable') is not None and hparams['pe_enable']:
-                            # f0_midi = prediction.get("f0_midi")
-                            # f0_midi = f0_midi[mel_gt_mask]
-                            # plt.plot(f0_midi, label=r'$f0_M$')
-                            pass
                         plt.legend()
                         plt.tight_layout()
                         plt.savefig(f'{gen_dir}/plot/[F0][{item_name}]{text}.png', format='png')
@@ -486,7 +408,8 @@ class FastSpeech2Task(TtsTask):
         return {}
 
     @staticmethod
-    def save_result(wav_out, mel, prefix, item_name, text, gen_dir, str_phs=None, mel2ph=None, gt_f0=None, pred_f0=None):
+    def save_result(wav_out, mel, prefix, item_name, text, gen_dir, str_phs=None, mel2ph=None, gt_f0=None,
+                    pred_f0=None):
         item_name = item_name.replace('/', '-')
         base_fn = f'[{item_name}][{prefix}]'
 
@@ -494,22 +417,16 @@ class FastSpeech2Task(TtsTask):
             base_fn += text
         base_fn += ('-' + hparams['exp_name'])
         np.save(os.path.join(hparams['work_dir'], f'{prefix}_mels_npy', item_name), mel)
-        audio.save_wav(wav_out, f'{gen_dir}/wavs/{base_fn}.wav', 24000,#hparams['audio_sample_rate'],
+        audio.save_wav(wav_out, f'{gen_dir}/wavs/{base_fn}.wav', 24000,  # hparams['audio_sample_rate'],
                        norm=hparams['out_wav_norm'])
         fig = plt.figure(figsize=(14, 10))
         spec_vmin = hparams['mel_vmin']
         spec_vmax = hparams['mel_vmax']
         heatmap = plt.pcolor(mel.T, vmin=spec_vmin, vmax=spec_vmax)
         fig.colorbar(heatmap)
-        if hparams.get('pe_enable') is not None and hparams['pe_enable']:
-            gt_f0 = (gt_f0 - 100) / (800 - 100) * 80 * (gt_f0 > 0)
-            pred_f0 = (pred_f0 - 100) / (800 - 100) * 80 * (pred_f0 > 0)
-            plt.plot(pred_f0, c='white', linewidth=1, alpha=0.6)
-            plt.plot(gt_f0, c='red', linewidth=1, alpha=0.6)
-        else:
-            f0, _ = get_pitch_parselmouth(wav_out, mel, hparams)
-            f0 = (f0 - 100) / (800 - 100) * 80 * (f0 > 0)
-            plt.plot(f0, c='white', linewidth=1, alpha=0.6)
+        f0, _ = get_pitch_parselmouth(wav_out, mel, hparams)
+        f0 = (f0 - 100) / (800 - 100) * 80 * (f0 > 0)
+        plt.plot(f0, c='white', linewidth=1, alpha=0.6)
         if mel2ph is not None and str_phs is not None:
             decoded_txt = str_phs.split(" ")
             dur = mel2ph_to_dur(torch.LongTensor(mel2ph)[None, :], len(decoded_txt))[0].numpy()

@@ -1,7 +1,10 @@
-import torch
-from utils.hparams import hparams
-import numpy as np
 import os
+
+import numpy as np
+import torch
+
+from utils.hparams import hparams
+
 
 class BaseDataset(torch.utils.data.Dataset):
     '''
@@ -20,6 +23,7 @@ class BaseDataset(torch.utils.data.Dataset):
         2. *__getitem__*:
             the index function.
     '''
+
     def __init__(self, shuffle):
         super().__init__()
         self.hparams = hparams

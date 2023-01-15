@@ -1,5 +1,6 @@
 import librosa
 import torch
+import torch.nn as nn
 
 
 def load_cn_model(ch_hubert_path):

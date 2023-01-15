@@ -2,9 +2,8 @@ from modules.commons.common_layers import *
 from modules.commons.common_layers import Embedding
 from modules.fastspeech.tts_modules import FastspeechDecoder, PitchPredictor, \
     FastspeechEncoder
-from utils.cwt import cwt2f0
 from utils.hparams import hparams
-from utils.pitch_utils import f0_to_coarse, denorm_f0, norm_f0
+from utils.pitch_utils import f0_to_coarse, denorm_f0
 
 FS_ENCODERS = {
     'fft': lambda hp: FastspeechEncoder(
@@ -31,33 +30,22 @@ class FastSpeech2(nn.Module):
         predictor_hidden = hparams['predictor_hidden'] if hparams['predictor_hidden'] > 0 else self.hidden_size
         if hparams['use_pitch_embed']:
             self.pitch_embed = Embedding(300, self.hidden_size, self.padding_idx)
-            if hparams['pitch_type'] == 'cwt':
-                h = hparams['cwt_hidden_size']
-                cwt_out_dims = 10
-                if hparams['use_uv']:
-                    cwt_out_dims = cwt_out_dims + 1
-                self.cwt_predictor = nn.Sequential(
-                    nn.Linear(self.hidden_size, h),
-                    PitchPredictor(
-                        h,
-                        n_chans=predictor_hidden,
-                        n_layers=hparams['predictor_layers'],
-                        dropout_rate=hparams['predictor_dropout'], odim=cwt_out_dims,
-                        padding=hparams['ffn_padding'], kernel_size=hparams['predictor_kernel']))
-                self.cwt_stats_layers = nn.Sequential(
-                    nn.Linear(self.hidden_size, h), nn.ReLU(),
-                    nn.Linear(h, h), nn.ReLU(), nn.Linear(h, 2)
-                )
-            else:
-                self.pitch_predictor = PitchPredictor(
-                    self.hidden_size,
-                    n_chans=predictor_hidden,
-                    n_layers=hparams['predictor_layers'],
-                    dropout_rate=hparams['predictor_dropout'],
-                    odim=2 if hparams['pitch_type'] == 'frame' else 1,
-                    padding=hparams['ffn_padding'], kernel_size=hparams['predictor_kernel'])
+            self.pitch_predictor = PitchPredictor(
+                self.hidden_size,
+                n_chans=predictor_hidden,
+                n_layers=hparams['predictor_layers'],
+                dropout_rate=hparams['predictor_dropout'],
+                odim=2 if hparams['pitch_type'] == 'frame' else 1,
+                padding=hparams['ffn_padding'], kernel_size=hparams['predictor_kernel'])
         if hparams['use_energy_embed']:
             self.energy_embed = Embedding(256, self.hidden_size, self.padding_idx)
+        if hparams['use_spk_id']:
+            self.spk_embed_proj = Embedding(hparams['num_spk'] + 1, self.hidden_size)
+            if hparams['use_split_spk_id']:
+                self.spk_embed_f0 = Embedding(hparams['num_spk'] + 1, self.hidden_size)
+                self.spk_embed_dur = Embedding(hparams['num_spk'] + 1, self.hidden_size)
+        elif hparams['use_spk_embed']:
+            self.spk_embed_proj = Linear(256, self.hidden_size, bias=True)
 
     def forward(self, hubert, mel2ph=None, spk_embed=None,
                 ref_mels=None, f0=None, uv=None, energy=None, skip_decoder=True,
@@ -126,13 +114,6 @@ class FastSpeech2(nn.Module):
         x = decoder_inp  # [B, T, H]
         x = self.mel_out(x)
         return x * tgt_nonpadding
-
-    def cwt2f0_norm(self, cwt_spec, mean, std, mel2ph):
-        f0 = cwt2f0(cwt_spec, mean, std, hparams['cwt_scales'])
-        f0 = torch.cat(
-            [f0] + [f0[:, -1:]] * (mel2ph.shape[1] - f0.shape[1]), 1)
-        f0_norm = norm_f0(f0, None, hparams)
-        return f0_norm
 
     def out2mel(self, out):
         return out

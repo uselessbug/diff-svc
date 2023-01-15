@@ -1,5 +1,4 @@
 import io
-import json
 from pathlib import Path
 
 import numpy as np
@@ -7,27 +6,17 @@ import soundfile
 
 from infer_tools import infer_tool
 from infer_tools import slicer
-from infer_tools.data_static import evaluate_key
 from infer_tools.infer_tool import Svc
 from utils.hparams import hparams
 
 
-def run_clip(raw_audio_path, svc_model, key, acc, use_crepe, auto_key=False, use_gt_mel=False, add_noise_step=500,
-             out_path=None, slice_db=-40, **kwargs):
-    print(f'code version:2023-01-05')
+def run_clip(raw_audio_path, svc_model, key, acc, use_crepe, auto_key=False, out_path=None, slice_db=-40, **kwargs):
+    print(f'code version:2023-01-09')
 
     clean_name = Path(raw_audio_path).name.split(".")[0]
     infer_tool.format_wav(raw_audio_path)
     wav_path = Path(raw_audio_path).with_suffix('.wav')
-
-    if "f0_static" in hparams.keys():
-        f0_static = json.loads(hparams['f0_static'])
-        best_key = evaluate_key(wav_path, f0_static)[0]
-        print(f"推荐移调:{best_key}")
-        if auto_key:
-            print(f"自动变调已启用，您的输入key被{best_key}key覆盖，控制参数为auto_key")
-            key = best_key
-
+    key = svc_model.evaluate_key(wav_path, key, auto_key)
     chunks = slicer.cut(wav_path, db_thresh=slice_db)
     audio_data, audio_sr = slicer.chunks2audio(wav_path, chunks)
 
@@ -46,8 +35,7 @@ def run_clip(raw_audio_path, svc_model, key, acc, use_crepe, auto_key=False, use
                 np.zeros(int(np.ceil(length / hparams['hop_size']))),
                 np.zeros(length))
         else:
-            _f0_tst, _f0_pred, _audio = svc_model.infer(raw_path, key=key, acc=acc, use_crepe=use_crepe,
-                                                        use_gt_mel=use_gt_mel, add_noise_step=add_noise_step)
+            _f0_tst, _f0_pred, _audio = svc_model.infer(raw_path, key=key, acc=acc, use_crepe=use_crepe)
         fix_audio = np.zeros(length)
         fix_audio[:] = np.mean(_audio)
         fix_audio[:len(_audio)] = _audio[0 if len(_audio) < len(fix_audio) else len(_audio) - len(fix_audio):]
@@ -70,10 +58,10 @@ if __name__ == '__main__':
     # 支持多个wav/ogg文件，放在raw文件夹下，带扩展名
     file_names = ["逍遥仙"]
     # 自适应变调
-    auto_key = False
-    trans = [0]  # 音高调整，支持正负（半音），数量与上一行对应，不足的自动按第一个移调参数补齐
+    auto_key = True
+    trans = [4]  # 音高调整，支持正负（半音），数量与上一行对应，不足的自动按第一个移调参数补齐
     # 加速倍数
-    accelerate = 20
+    accelerate = 10
     hubert_gpu = True
     wav_format = 'flac'
     step = int(model_path.split("_")[-1].split(".")[0])
@@ -82,7 +70,7 @@ if __name__ == '__main__':
     infer_tool.mkdir(["./raw", "./results"])
     infer_tool.fill_a_to_b(trans, file_names)
 
-    model = Svc(project_name, config_path, hubert_gpu, model_path)
+    model = Svc(project_name, config_path, hubert_gpu, model_path, onnx=False)
     for f_name, tran in zip(file_names, trans):
         if "." not in f_name:
             f_name += ".wav"

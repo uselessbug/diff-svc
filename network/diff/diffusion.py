@@ -1,6 +1,7 @@
 from collections import deque
 from functools import partial
 from inspect import isfunction
+
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -8,8 +9,8 @@ from torch import nn
 from tqdm import tqdm
 
 from modules.fastspeech.fs2 import FastSpeech2
-from utils.hparams import hparams
 from training.train_pipeline import Batch2Loss
+from utils.hparams import hparams
 
 
 def exists(x):
@@ -157,7 +158,7 @@ class GaussianDiffusion(nn.Module):
         # no noise when t == 0
         nonzero_mask = (1 - (t == 0).float()).reshape(b, *((1,) * (len(x.shape) - 1)))
         return model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
-    
+
     @torch.no_grad()
     def p_sample_plms(self, x, t, interval, cond, clip_denoised=True, repeat_noise=False):
         """
@@ -166,10 +167,11 @@ class GaussianDiffusion(nn.Module):
 
         def get_x_pred(x, noise_t, t):
             a_t = extract(self.alphas_cumprod, t, x.shape)
-            a_prev = extract(self.alphas_cumprod, torch.max(t-interval, torch.zeros_like(t)), x.shape)
+            a_prev = extract(self.alphas_cumprod, torch.max(t - interval, torch.zeros_like(t)), x.shape)
             a_t_sq, a_prev_sq = a_t.sqrt(), a_prev.sqrt()
 
-            x_delta = (a_prev - a_t) * ((1 / (a_t_sq * (a_t_sq + a_prev_sq))) * x - 1 / (a_t_sq * (((1 - a_prev) * a_t).sqrt() + ((1 - a_t) * a_prev).sqrt())) * noise_t)
+            x_delta = (a_prev - a_t) * ((1 / (a_t_sq * (a_t_sq + a_prev_sq))) * x - 1 / (
+                        a_t_sq * (((1 - a_prev) * a_t).sqrt() + ((1 - a_t) * a_prev).sqrt())) * noise_t)
             x_pred = x + x_delta
 
             return x_pred
@@ -179,7 +181,7 @@ class GaussianDiffusion(nn.Module):
 
         if len(noise_list) == 0:
             x_pred = get_x_pred(x, noise_pred, t)
-            noise_pred_prev = self.denoise_fn(x_pred, max(t-interval, 0), cond=cond)
+            noise_pred_prev = self.denoise_fn(x_pred, max(t - interval, 0), cond=cond)
             noise_pred_prime = (noise_pred + noise_pred_prev) / 2
         elif len(noise_list) == 1:
             noise_pred_prime = (3 * noise_pred - noise_list[-1]) / 2
@@ -236,35 +238,20 @@ class GaussianDiffusion(nn.Module):
                 self.norm_spec(ref_mels), cond, ret, self.K_step, b, device
             )
         else:
-            '''
-            ret['fs2_mel'] = ret['mel_out']
-            fs2_mels = ret['mel_out']
-            t = self.K_step
-            fs2_mels = self.norm_spec(fs2_mels)
-            fs2_mels = fs2_mels.transpose(1, 2)[:, None, :, :]
-            x = self.q_sample(x_start=fs2_mels, t=torch.tensor([t - 1], device=device).long())
-            if hparams.get('gaussian_start') is not None and hparams['gaussian_start']:
-                print('===> gaussion start.')
-                shape = (cond.shape[0], 1, self.mel_bins, cond.shape[2])
-                x = torch.randn(shape, device=device)
-            '''
             if 'use_gt_mel' in kwargs.keys() and kwargs['use_gt_mel']:
-                t =kwargs['add_noise_step']
+                t = kwargs['add_noise_step']
                 print('===>using ground truth mel as start, please make sure parameter "key==0" !')
                 fs2_mels = ref_mels
                 fs2_mels = self.norm_spec(fs2_mels)
                 fs2_mels = fs2_mels.transpose(1, 2)[:, None, :, :]
                 x = self.q_sample(x_start=fs2_mels, t=torch.tensor([t - 1], device=device).long())
-                # for i in tqdm(reversed(range(0, t)), desc='sample time step', total=t):
-                #     x = self.p_sample(x, torch.full((b,), i, device=device, dtype=torch.long), cond)
             else:
                 t = self.K_step
-                #print('===> gaussion start.')
                 shape = (cond.shape[0], 1, self.mel_bins, cond.shape[2])
                 x = torch.randn(shape, device=device)
             if hparams.get('pndm_speedup') and hparams['pndm_speedup'] > 1:
                 self.noise_list = deque(maxlen=4)
-                iteration_interval =hparams['pndm_speedup']
+                iteration_interval = hparams['pndm_speedup']
                 for i in tqdm(reversed(range(0, t, iteration_interval)), desc='sample time step',
                               total=t // iteration_interval):
                     x = self.p_sample_plms(x, torch.full((b,), i, device=device, dtype=torch.long), iteration_interval,
@@ -284,9 +271,6 @@ class GaussianDiffusion(nn.Module):
 
     def denorm_spec(self, x):
         return (x + 1) / 2 * (self.spec_max - self.spec_min) + self.spec_min
-
-    def cwt2f0_norm(self, cwt_spec, mean, std, mel2ph):
-        return self.fs2.cwt2f0_norm(cwt_spec, mean, std, mel2ph)
 
     def out2mel(self, x):
         return x

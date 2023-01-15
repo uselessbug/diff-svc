@@ -1,19 +1,3 @@
-'''
-
-    item: one piece of data
-    item_name: data id
-    wavfn: wave file path
-    txt: lyrics
-    ph: phoneme
-    tgfn: text grid file path (unused)
-    spk: dataset name
-    wdb: word boundary
-    ph_durs: phoneme durations
-    midi: pitch as midi notes
-    midi_dur: midi duration
-    is_slur: keep singing upon note changes
-'''
-
 import logging
 from copy import deepcopy
 
@@ -31,7 +15,8 @@ class SVCBinarizer(BaseBinarizer):
         self.item_names = sorted(list(self.items.keys()))
         self._train_item_names, self._test_item_names = self.split_train_test_set(self.item_names)
 
-    def split_train_test_set(self, item_names):
+    @staticmethod
+    def split_train_test_set(item_names):
         item_names = deepcopy(item_names)
         if hparams['choose_test_manually']:
             test_item_names = [x for x in item_names if any([x.startswith(ts) for ts in hparams['test_prefixes']])]
@@ -56,7 +41,3 @@ class SVCBinarizer(BaseBinarizer):
 
     def load_meta_data(self):
         self.items = File2Batch.file2temporary_dict()
-
-    def _phone_encoder(self):
-        from preprocessing.hubertinfer import Hubertencoder
-        return Hubertencoder(hparams['hubert_path'])

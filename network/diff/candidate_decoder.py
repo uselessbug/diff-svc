@@ -1,14 +1,15 @@
-from modules.fastspeech.tts_modules import FastspeechDecoder
-# from modules.fastspeech.fast_tacotron import DecoderRNN
-# from modules.fastspeech.speedy_speech.speedy_speech import ConvBlocks
-# from modules.fastspeech.conformer.conformer import ConformerDecoder
-import torch
-from torch.nn import functional as F
-import torch.nn as nn
 import math
-from utils.hparams import hparams
+
+import torch
+import torch.nn as nn
+from torch.nn import functional as F
+
 from modules.commons.common_layers import Mish
+from modules.fastspeech.tts_modules import FastspeechDecoder
+from utils.hparams import hparams
+
 Linear = nn.Linear
+
 
 class SinusoidalPosEmb(nn.Module):
     def __init__(self, dim):
@@ -31,10 +32,10 @@ def Conv1d(*args, **kwargs):
     return layer
 
 
-class FFT(FastspeechDecoder): # unused, because DiffSinger only uses FastspeechEncoder
+class FFT(FastspeechDecoder):  # unused, because DiffSinger only uses FastspeechEncoder
     # NOTE: this part of script is *isolated* from other scripts, which means
     #       it may not be compatible with the current version.
-    
+
     def __init__(self, hidden_size=None, num_layers=None, kernel_size=None, num_heads=None):
         super().__init__(hidden_size, num_layers, kernel_size, num_heads=num_heads)
         dim = hparams['residual_channels']
@@ -57,7 +58,7 @@ class FFT(FastspeechDecoder): # unused, because DiffSinger only uses FastspeechE
         :return:
         """
         x = spec[:, 0]
-        x = self.input_projection(x).permute([0, 2, 1])  #  [B, T, residual_channel]
+        x = self.input_projection(x).permute([0, 2, 1])  # [B, T, residual_channel]
         diffusion_step = self.diffusion_embedding(diffusion_step)
         diffusion_step = self.mlp(diffusion_step)  # [B, dim]
         cond = cond.permute([0, 2, 1])  # [B, T, M]

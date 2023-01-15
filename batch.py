@@ -1,5 +1,4 @@
 import io
-import json
 import os.path
 from pathlib import Path
 
@@ -7,7 +6,6 @@ import numpy as np
 import soundfile
 
 from infer_tools import infer_tool
-from infer_tools.data_static import evaluate_key
 from infer_tools.infer_tool import Svc
 from infer_tools.trans_key import trans_opencpop
 from utils.hparams import hparams
@@ -16,12 +14,7 @@ from utils.hparams import hparams
 def run_clip(raw_audio_path, svc_model, key, acc, use_crepe, auto_key=False, use_gt_mel=False, add_noise_step=500,
              units_mode=False):
     infer_tool.format_wav(raw_audio_path)
-    if "f0_static" in hparams.keys():
-        f0_static = json.loads(hparams['f0_static'])
-        best_key = evaluate_key(raw_audio_path, f0_static)[0]
-        if auto_key:
-            print(f"自动变调已启用，您的变调参数被{best_key}key覆盖，控制参数为auto_key")
-            key = best_key
+    key = svc_model.evaluate_key(raw_audio_path, key, auto_key)
     _f0_tst, _f0_pred, _audio = svc_model.infer(raw_audio_path, key=key, acc=acc, use_crepe=use_crepe,
                                                 singer=not units_mode, use_gt_mel=use_gt_mel,
                                                 add_noise_step=add_noise_step)

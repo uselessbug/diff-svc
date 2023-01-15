@@ -1,5 +1,7 @@
 # Diff-SVC(train/inference by yourself)
 
+## 基于原版教程修改
+
 ## 0.环境配置
 
 > 注意:requirements文件已更新，目前分为3个版本，可自行选择使用。\
@@ -57,12 +59,6 @@ pndm_speedup=20
 key=0
 #变调参数，默认为0(不是1!!)，将源音频的音高升高key个半音后合成，如男声转女生，可填入8或者12等(12就是升高一整个8度)
 
-use_pe=True
-#梅尔谱合成音频时使用的F0提取算法，如果改成False将使用源音频的F0\
-这里填True和False合成会略有差异，通常是True会好些，但也不尽然，对合成速度几乎无影响\
-(无论key填什么 这里都是可以自由选择的，不影响)\
-44.1kHz下不支持此功能，会自动关闭，开着也不报错就是了
-
 use_gt_mel=False
 #这个选项类似于AI画图的图生图功能，如果打开，产生的音频将是输入声音与目标说话人声音的混合，混合比例由下一个参数确定
 注意!!!：这个参数如果改成True，请确保key填成0，不支持变调
@@ -87,7 +83,7 @@ python infer.py\
 
 ### 2.2 修改超参数配置
 
-> 首先请备份一份config.yaml(此文件对应24kHz声码器, 44.1kHz声码器请使用config_nsf.yaml)，然后修改它\
+> 首先请备份一份config.yaml（training文件夹下），然后修改它\
 > 可能会用到的参数如下(以工程名为nyaru为例):
 
 ```
@@ -152,14 +148,11 @@ use_crepe: true
 val_check_interval: 2000
 #每2000steps推理测试集并保存ckpt
 
-vocoder_ckpt:checkpoints/0109_hifigan_bigpopcs_hop128
-#24kHz下为对应声码器的目录, 44.1kHz下为对应声码器的文件名, 注意不要填错
+vocoder_ckpt:checkpoints/nsf_hifigan/model
+#对应声码器的文件名, 注意不要填错
 
 work_dir: checkpoints/nyaru
 #修改后缀为工程名(也可以删掉或完全留空自动生成，但别乱填)
-no_fs2: true
-#对网络encoder的精简，能缩减模型体积，加快训练，且并未发现有对网络表现损害的直接证据。默认打开
-
 ```
 
 > 其他的参数如果你不知道它是做什么的，请不要修改，即使你看着名称可能以为你知道它是做什么的。
@@ -247,5 +240,3 @@ apt-get install libsndfile1 -y
 > 2.5.5 预处理数据过慢\
 > 检查是否在配置中开启了use_crepe，将其关闭可显著提升速度。\
 > 检查配置中hubert_gpu是否开启。
-
-如有其他问题，请加入QQ频道或discord频道询问。

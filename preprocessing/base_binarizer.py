@@ -1,18 +1,19 @@
 import json
 import os
-import random
 
 import numpy as np
 import yaml
 from tqdm import tqdm
 
-from infer_tools.data_static import collect_f0, merge_dict, static_time
-from preprocessing.data_gen_utils import get_mel2ph, get_pitch_parselmouth, build_phone_encoder, get_pitch_crepe
+from infer_tools.data_static import collect_f0, static_time
+from network.vocoders.nsf_hifigan import NsfHifiGAN
+from preprocessing.data_gen_utils import get_pitch_parselmouth, get_pitch_crepe
+from preprocessing.hubertinfer import Hubertencoder
 from utils.hparams import set_hparams, hparams
 from utils.indexed_datasets import IndexedDatasetBuilder
 
 os.environ["OMP_NUM_THREADS"] = "1"
-BASE_ITEM_ATTRIBUTES = ['txt', 'ph', 'wav_fn', 'tg_fn', 'spk_id']
+BASE_ITEM_ATTRIBUTES = ['wav_fn', 'spk_id']
 
 
 class BinarizationError(Exception):
@@ -43,7 +44,8 @@ class BaseBinarizer:
 
     def __init__(self, item_attributes=BASE_ITEM_ATTRIBUTES):
         self.binarization_args = hparams['binarization_args']
-
+        self.vocoder = NsfHifiGAN()
+        self.phone_encoder = Hubertencoder(pt_path=hparams['hubert_path'])
         self.items = {}
         # every item in self.items has some attributes
         self.item_attributes = item_attributes
@@ -52,10 +54,6 @@ class BaseBinarizer:
         # check program correctness 检查itemdict的key只能在给定的列表中取值
         assert all([attr in self.item_attributes for attr in list(self.items.values())[0].keys()])
         self.item_names = sorted(list(self.items.keys()))
-
-        if self.binarization_args['shuffle']:
-            random.seed(1234)
-            random.shuffle(self.item_names)
 
         # set default get_pitch algorithm
         if hparams['use_crepe']:
@@ -90,29 +88,6 @@ class BaseBinarizer:
     def item_name2spk_id(self, item_name):
         return self.spk_map[self.items[item_name]['spk_id']]
 
-    def _phone_encoder(self):
-        '''
-        use hubert encoder
-        '''
-        raise NotImplementedError
-        '''
-            create 'phone_set.json' file if it doesn't exist
-        '''
-        ph_set_fn = f"{hparams['binary_data_dir']}/phone_set.json"
-        ph_set = []
-        if hparams['reset_phone_dict'] or not os.path.exists(ph_set_fn):
-            self.load_ph_set(ph_set)
-            ph_set = sorted(set(ph_set))
-            json.dump(ph_set, open(ph_set_fn, 'w', encoding='utf-8'))
-            print("| Build phone set: ", ph_set)
-        else:
-            ph_set = json.load(open(ph_set_fn, 'r', encoding='utf-8'))
-            print("| Load phone set: ", ph_set)
-        return build_phone_encoder(hparams['binary_data_dir'])
-
-    def load_ph_set(self, ph_set):
-        raise NotImplementedError
-
     def meta_data_iterator(self, prefix):
         if prefix == 'valid':
             item_names = self.valid_item_names
@@ -130,8 +105,6 @@ class BaseBinarizer:
         print("| spk_map: ", self.spk_map)
         spk_map_fn = f"{hparams['binary_data_dir']}/spk_map.json"
         json.dump(self.spk_map, open(spk_map_fn, 'w', encoding='utf-8'))
-
-        self.phone_encoder = self._phone_encoder()
         self.process_data_split('valid')
         self.process_data_split('test')
         self.process_data_split('train')
@@ -141,7 +114,6 @@ class BaseBinarizer:
         args = []
         builder = IndexedDatasetBuilder(f'{data_dir}/{prefix}')
         lengths = []
-        f0s = []
         total_sec = 0
 
         for item_name, meta_data in self.meta_data_iterator(prefix):
@@ -157,25 +129,17 @@ class BaseBinarizer:
                 continue
             spec_min.append(item['spec_min'])
             spec_max.append(item['spec_max'])
-            f0_dict[item['wav_fn']] = collect_f0(item['f0'])
-            if not self.binarization_args['with_wav'] and 'wav' in item:
-                if hparams['debug']:
-                    print("del wav")
-                del item['wav']
-            if hparams['debug']:
-                print(item)
+            f0_dict[item['wav_fn']] = item['f0']
             builder.add_item(item)
             lengths.append(item['len'])
             total_sec += item['sec']
         if prefix == 'train':
             spec_max = np.max(spec_max, 0)
             spec_min = np.min(spec_min, 0)
-            print(spec_max.shape)
-            pitch_num = merge_dict(f0_dict.values())
-            pitch_time = static_time(pitch_num)
-            total_time = round(sum(pitch_time.values()), 2)
-            pitch_time['total_time'] = total_time
-            print(f"total time: {total_time}s")
+            pitch_time = static_time(f0_dict)
+            effective_time = round(sum(pitch_time.values()), 2)
+            pitch_time['effective_time'] = effective_time
+            print(f"dataset effective time: {effective_time}s")
             with open(hparams['config_path'], encoding='utf-8') as f:
                 _hparams = yaml.safe_load(f)
                 _hparams['spec_max'] = spec_max.tolist()
@@ -185,53 +149,11 @@ class BaseBinarizer:
                 yaml.safe_dump(_hparams, f)
         builder.finalize()
         np.save(f'{data_dir}/{prefix}_lengths.npy', lengths)
-        if len(f0s) > 0:
-            f0s = np.concatenate(f0s, 0)
-            f0s = f0s[f0s != 0]
-            np.save(f'{data_dir}/{prefix}_f0s_mean_std.npy', [np.mean(f0s).item(), np.std(f0s).item()])
         print(f"| {prefix} total duration: {total_sec:.3f}s")
 
     def process_item(self, item_name, meta_data, binarization_args):
         from preprocessing.process_pipeline import File2Batch
-        return File2Batch.temporary_dict2processed_input(item_name, meta_data, self.phone_encoder, binarization_args)
-
-    def get_align(self, meta_data, mel, phone_encoded, res):
-        raise NotImplementedError
-
-    def get_align_from_textgrid(self, meta_data, mel, phone_encoded, res):
-        '''
-            NOTE: this part of script is *isolated* from other scripts, which means
-                  it may not be compatible with the current version.
-        '''
-        return
-        tg_fn, ph = meta_data['tg_fn'], meta_data['ph']
-        if tg_fn is not None and os.path.exists(tg_fn):
-            mel2ph, dur = get_mel2ph(tg_fn, ph, mel, hparams)
-        else:
-            raise BinarizationError(f"Align not found")
-        if mel2ph.max() - 1 >= len(phone_encoded):
-            raise BinarizationError(
-                f"Align does not match: mel2ph.max() - 1: {mel2ph.max() - 1}, len(phone_encoded): {len(phone_encoded)}")
-        res['mel2ph'] = mel2ph
-        res['dur'] = dur
-
-    def get_f0cwt(self, f0, res):
-        '''
-            NOTE: this part of script is *isolated* from other scripts, which means
-                  it may not be compatible with the current version.
-        '''
-        return
-        from utils.cwt import get_cont_lf0, get_lf0_cwt
-        uv, cont_lf0_lpf = get_cont_lf0(f0)
-        logf0s_mean_org, logf0s_std_org = np.mean(cont_lf0_lpf), np.std(cont_lf0_lpf)
-        cont_lf0_lpf_norm = (cont_lf0_lpf - logf0s_mean_org) / logf0s_std_org
-        Wavelet_lf0, scales = get_lf0_cwt(cont_lf0_lpf_norm)
-        if np.any(np.isnan(Wavelet_lf0)):
-            raise BinarizationError("NaN CWT")
-        res['cwt_spec'] = Wavelet_lf0
-        res['cwt_scales'] = scales
-        res['f0_mean'] = logf0s_mean_org
-        res['f0_std'] = logf0s_std_org
+        return File2Batch.temporary_dict2processed_input(item_name, meta_data, self.phone_encoder)
 
 
 if __name__ == "__main__":

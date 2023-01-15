@@ -4,12 +4,19 @@ import torch
 
 from modules.nsf_hifigan.models import load_model
 from modules.nsf_hifigan.nvSTFT import load_wav_to_torch, STFT
-from network.vocoders.base_vocoder import BaseVocoder, register_vocoder
 from utils.hparams import hparams
+
+nsf_hifigan = None
+
+
+def register_vocoder(cls):
+    global nsf_hifigan
+    nsf_hifigan = cls
+    return cls
 
 
 @register_vocoder
-class NsfHifiGAN(BaseVocoder):
+class NsfHifiGAN():
     def __init__(self, device=None):
         if device is None:
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -20,36 +27,6 @@ class NsfHifiGAN(BaseVocoder):
             self.model, self.h = load_model(model_path, device=self.device)
         else:
             print('Error: HifiGAN model file is not found!')
-
-    def spec2wav_torch(self, mel, **kwargs):  # mel: [B, T, bins]
-        if self.h.sampling_rate != hparams['audio_sample_rate']:
-            print('Mismatch parameters: hparams[\'audio_sample_rate\']=', hparams['audio_sample_rate'], '!=',
-                  self.h.sampling_rate, '(vocoder)')
-        if self.h.num_mels != hparams['audio_num_mel_bins']:
-            print('Mismatch parameters: hparams[\'audio_num_mel_bins\']=', hparams['audio_num_mel_bins'], '!=',
-                  self.h.num_mels, '(vocoder)')
-        if self.h.n_fft != hparams['fft_size']:
-            print('Mismatch parameters: hparams[\'fft_size\']=', hparams['fft_size'], '!=', self.h.n_fft, '(vocoder)')
-        if self.h.win_size != hparams['win_size']:
-            print('Mismatch parameters: hparams[\'win_size\']=', hparams['win_size'], '!=', self.h.win_size,
-                  '(vocoder)')
-        if self.h.hop_size != hparams['hop_size']:
-            print('Mismatch parameters: hparams[\'hop_size\']=', hparams['hop_size'], '!=', self.h.hop_size,
-                  '(vocoder)')
-        if self.h.fmin != hparams['fmin']:
-            print('Mismatch parameters: hparams[\'fmin\']=', hparams['fmin'], '!=', self.h.fmin, '(vocoder)')
-        if self.h.fmax != hparams['fmax']:
-            print('Mismatch parameters: hparams[\'fmax\']=', hparams['fmax'], '!=', self.h.fmax, '(vocoder)')
-        with torch.no_grad():
-            c = mel.transpose(2, 1)  # [B, T, bins]
-            # log10 to log mel
-            c = 2.30259 * c
-            f0 = kwargs.get('f0')  # [B, T]
-            if f0 is not None and hparams.get('use_nsf'):
-                y = self.model(c, f0).view(-1)
-            else:
-                y = self.model(c).view(-1)
-        return y
 
     def spec2wav(self, mel, **kwargs):
         if self.h.sampling_rate != hparams['audio_sample_rate']:
@@ -75,11 +52,8 @@ class NsfHifiGAN(BaseVocoder):
             # log10 to log mel
             c = 2.30259 * c
             f0 = kwargs.get('f0')
-            if f0 is not None and hparams.get('use_nsf'):
-                f0 = torch.FloatTensor(f0[None, :]).to(self.device)
-                y = self.model(c, f0).view(-1)
-            else:
-                y = self.model(c).view(-1)
+            f0 = torch.FloatTensor(f0[None, :]).to(self.device)
+            y = self.model(c, f0).view(-1)
         wav_out = y.cpu().numpy()
         return wav_out
 

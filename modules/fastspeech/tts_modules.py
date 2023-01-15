@@ -1,12 +1,11 @@
-import logging
 import math
 
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
+from modules.commons.common_layers import SinusoidalPositionalEmbedding, EncSALayer, BatchNorm1dTBC
 from modules.commons.espnet_positional_embedding import RelPositionalEncoding
-from modules.commons.common_layers import SinusoidalPositionalEmbedding, Linear, EncSALayer, DecSALayer, BatchNorm1dTBC
 from utils.hparams import hparams
 
 DEFAULT_MAX_SOURCE_POSITIONS = 2000
@@ -314,13 +313,14 @@ class FastspeechEncoder(FFTBlocks):
         - input is [B, T, H], not [B, T, C]
         - supports "relative" positional encoding
     '''
+
     def __init__(self, hidden_size=None, num_layers=None, kernel_size=None, num_heads=2):
         hidden_size = hparams['hidden_size'] if hidden_size is None else hidden_size
         kernel_size = hparams['enc_ffn_kernel_size'] if kernel_size is None else kernel_size
         num_layers = hparams['dec_layers'] if num_layers is None else num_layers
         super().__init__(hidden_size, num_layers, kernel_size, num_heads=num_heads,
                          use_pos_embed=False)  # use_pos_embed_alpha for compatibility
-        #self.embed_tokens = embed_tokens
+        # self.embed_tokens = embed_tokens
         self.embed_scale = math.sqrt(hidden_size)
         self.padding_idx = 0
         if hparams.get('rel_pos') is not None and hparams['rel_pos']:
@@ -339,7 +339,7 @@ class FastspeechEncoder(FFTBlocks):
         }
         """
         # encoder_padding_mask = txt_tokens.eq(self.padding_idx).data
-        encoder_padding_mask = (hubert==0).all(-1)
+        encoder_padding_mask = (hubert == 0).all(-1)
         x = self.forward_embedding(hubert)  # [B, T, H]
         x = super(FastspeechEncoder, self).forward(x, encoder_padding_mask)
         return x
@@ -361,4 +361,3 @@ class FastspeechDecoder(FFTBlocks):
         kernel_size = hparams['dec_ffn_kernel_size'] if kernel_size is None else kernel_size
         num_layers = hparams['dec_layers'] if num_layers is None else num_layers
         super().__init__(hidden_size, num_layers, kernel_size, num_heads=num_heads)
-
