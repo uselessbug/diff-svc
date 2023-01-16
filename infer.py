@@ -10,7 +10,8 @@ from infer_tools.infer_tool import Svc
 from utils.hparams import hparams
 
 
-def run_clip(raw_audio_path, svc_model, key, acc, use_crepe, auto_key=False, out_path=None, slice_db=-40, **kwargs):
+def run_clip(raw_audio_path, svc_model, key, acc, use_crepe, spk_id=0, auto_key=False, out_path=None, slice_db=-40,
+             **kwargs):
     print(f'code version:2023-01-09')
 
     clean_name = Path(raw_audio_path).name.split(".")[0]
@@ -35,7 +36,7 @@ def run_clip(raw_audio_path, svc_model, key, acc, use_crepe, auto_key=False, out
                 np.zeros(int(np.ceil(length / hparams['hop_size']))),
                 np.zeros(length))
         else:
-            _f0_tst, _f0_pred, _audio = svc_model.infer(raw_path, key=key, acc=acc, use_crepe=use_crepe)
+            _f0_tst, _f0_pred, _audio = svc_model.infer(raw_path, spk_id=spk_id, key=key, acc=acc, use_crepe=use_crepe)
         fix_audio = np.zeros(length)
         fix_audio[:] = np.mean(_audio)
         fix_audio[:len(_audio)] = _audio[0 if len(_audio) < len(fix_audio) else len(_audio) - len(fix_audio):]
@@ -57,9 +58,10 @@ if __name__ == '__main__':
 
     # 支持多个wav/ogg文件，放在raw文件夹下，带扩展名
     file_names = ["逍遥仙"]
-    # 自适应变调
-    auto_key = True
-    trans = [4]  # 音高调整，支持正负（半音），数量与上一行对应，不足的自动按第一个移调参数补齐
+    spk_id = 0
+    # 自适应变调（仅支持单人模型）
+    auto_key = False
+    trans = [9]  # 音高调整，支持正负（半音），数量与上一行对应，不足的自动按第一个移调参数补齐
     # 加速倍数
     accelerate = 10
     hubert_gpu = True
@@ -76,4 +78,4 @@ if __name__ == '__main__':
             f_name += ".wav"
         audio_path = f"./raw/{f_name}"
         run_clip(raw_audio_path=audio_path, svc_model=model, key=tran, acc=accelerate, use_crepe=False,
-                 auto_key=auto_key, project_name=project_name, format=wav_format)
+                 spk_id=spk_id, auto_key=auto_key, project_name=project_name, format=wav_format)

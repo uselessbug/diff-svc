@@ -58,11 +58,11 @@ class File2Batch:
     '''
 
     @staticmethod
-    def file2temporary_dict():
+    def file2temporary_dict(raw_data_dir, ds_id):
         '''
             read from file, store data in temporary dicts
         '''
-        raw_data_dir = Path(hparams['raw_data_dir'])
+        raw_data_dir = Path(raw_data_dir)
         utterance_labels = []
         utterance_labels.extend(list(raw_data_dir.rglob(f"*.wav")))
         utterance_labels.extend(list(raw_data_dir.rglob(f"*.ogg")))
@@ -70,7 +70,7 @@ class File2Batch:
         all_temp_dict = {}
         for utterance_label in utterance_labels:
             item_name = str(utterance_label)
-            temp_dict = {'wav_fn': str(utterance_label), 'spk_id': hparams['speaker_id']}
+            temp_dict = {'wav_fn': str(utterance_label), 'spk_id': ds_id}
             all_temp_dict[item_name] = temp_dict
         return all_temp_dict
 
@@ -170,4 +170,7 @@ class File2Batch:
             'f0': f0,
             'uv': uv,
         }
+        if hparams['use_spk_id']:
+            spk_ids = torch.LongTensor([s['spk_id'] for s in samples])
+            batch['spk_ids'] = spk_ids
         return batch

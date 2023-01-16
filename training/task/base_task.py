@@ -218,6 +218,12 @@ class BaseTask(nn.Module):
                                   'validate'] else 10000,
                               accumulate_grad_batches=hparams['accumulate_grad_batches'])
         if not hparams['infer']:  # train
+            # Copy spk_map.json to work dir
+            spk_map = os.path.join(work_dir, 'spk_map.json')
+            spk_map_orig = os.path.join(hparams['binary_data_dir'], 'spk_map.json')
+            if not os.path.exists(spk_map) and os.path.exists(spk_map_orig):
+                shutil.copy(spk_map_orig, spk_map)
+                print(f"| Copied spk map to {spk_map}.")
             trainer.checkpoint_callback.task = task
             trainer.fit(task)
         else:

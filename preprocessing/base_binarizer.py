@@ -1,11 +1,13 @@
 import json
 import os
+import random
 
 import numpy as np
 import yaml
+from resemblyzer import VoiceEncoder
 from tqdm import tqdm
 
-from infer_tools.data_static import collect_f0, static_time
+from infer_tools.data_static import static_time
 from network.vocoders.nsf_hifigan import NsfHifiGAN
 from preprocessing.data_gen_utils import get_pitch_parselmouth, get_pitch_crepe
 from preprocessing.hubertinfer import Hubertencoder
@@ -42,18 +44,42 @@ class BaseBinarizer:
             the phoneme set.
     '''
 
-    def __init__(self, item_attributes=BASE_ITEM_ATTRIBUTES):
-        self.binarization_args = hparams['binarization_args']
+    def __init__(self, data_dir=None, item_attributes=None):
         self.vocoder = NsfHifiGAN()
         self.phone_encoder = Hubertencoder(pt_path=hparams['hubert_path'])
+        if item_attributes is None:
+            item_attributes = BASE_ITEM_ATTRIBUTES
+        if data_dir is None:
+            data_dir = hparams['raw_data_dir']
+        if 'speakers' not in hparams:
+            speakers = hparams['datasets']
+            hparams['speakers'] = hparams['datasets']
+        else:
+            speakers = hparams['speakers']
+        assert isinstance(speakers, list), 'Speakers must be a list'
+        assert len(speakers) == len(set(speakers)), 'Speakers cannot contain duplicate names'
+
+        self.raw_data_dirs = data_dir if isinstance(data_dir, list) else [data_dir]
+        assert len(speakers) == len(self.raw_data_dirs), \
+            'Number of raw data dirs must equal number of speaker names!'
+        self.speakers = speakers
+        self.binarization_args = hparams['binarization_args']
+
         self.items = {}
         # every item in self.items has some attributes
         self.item_attributes = item_attributes
 
-        self.load_meta_data()
-        # check program correctness 检查itemdict的key只能在给定的列表中取值
-        assert all([attr in self.item_attributes for attr in list(self.items.values())[0].keys()])
+        # load each dataset
+        for ds_id, data_dir in enumerate(self.raw_data_dirs):
+            self.load_meta_data(data_dir, ds_id)
+            if ds_id == 0:
+                # check program correctness
+                assert all([attr in self.item_attributes for attr in list(self.items.values())[0].keys()])
         self.item_names = sorted(list(self.items.keys()))
+
+        if self.binarization_args['shuffle']:
+            random.seed(hparams['seed'])
+            random.shuffle(self.item_names)
 
         # set default get_pitch algorithm
         if hparams['use_crepe']:
@@ -77,12 +103,8 @@ class BaseBinarizer:
         raise NotImplementedError
 
     def build_spk_map(self):
-        spk_map = set()
-        for item_name in self.item_names:
-            spk_name = self.items[item_name]['spk_id']
-            spk_map.add(spk_name)
-        spk_map = {x: i for i, x in enumerate(sorted(list(spk_map)))}
-        assert len(spk_map) == 0 or len(spk_map) <= hparams['num_spk'], len(spk_map)
+        spk_map = {x: i for i, x in enumerate(hparams['speakers'])}
+        assert len(spk_map) <= hparams['num_spk'], 'Actual number of speakers should be smaller than num_spk!'
         return spk_map
 
     def item_name2spk_id(self, item_name):
@@ -115,7 +137,8 @@ class BaseBinarizer:
         builder = IndexedDatasetBuilder(f'{data_dir}/{prefix}')
         lengths = []
         total_sec = 0
-
+        if self.binarization_args['with_spk_embed']:
+            voice_encoder = VoiceEncoder().cuda()
         for item_name, meta_data in self.meta_data_iterator(prefix):
             args.append([item_name, meta_data, self.binarization_args])
         spec_min = []
@@ -127,6 +150,8 @@ class BaseBinarizer:
             item = self.process_item(*a)
             if item is None:
                 continue
+            item['spk_embed'] = voice_encoder.embed_utterance(item['wav']) \
+                if self.binarization_args['with_spk_embed'] else None
             spec_min.append(item['spec_min'])
             spec_max.append(item['spec_max'])
             f0_dict[item['wav_fn']] = item['f0']
@@ -144,7 +169,8 @@ class BaseBinarizer:
                 _hparams = yaml.safe_load(f)
                 _hparams['spec_max'] = spec_max.tolist()
                 _hparams['spec_min'] = spec_min.tolist()
-                _hparams['f0_static'] = json.dumps(pitch_time)
+                if self.speakers == 1:
+                    _hparams['f0_static'] = json.dumps(pitch_time)
             with open(hparams['config_path'], 'w', encoding='utf-8') as f:
                 yaml.safe_dump(_hparams, f)
         builder.finalize()

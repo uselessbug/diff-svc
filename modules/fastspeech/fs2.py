@@ -40,10 +40,10 @@ class FastSpeech2(nn.Module):
         if hparams['use_energy_embed']:
             self.energy_embed = Embedding(256, self.hidden_size, self.padding_idx)
         if hparams['use_spk_id']:
-            self.spk_embed_proj = Embedding(hparams['num_spk'] + 1, self.hidden_size)
+            self.spk_embed_proj = Embedding(hparams['num_spk'], self.hidden_size)
             if hparams['use_split_spk_id']:
-                self.spk_embed_f0 = Embedding(hparams['num_spk'] + 1, self.hidden_size)
-                self.spk_embed_dur = Embedding(hparams['num_spk'] + 1, self.hidden_size)
+                self.spk_embed_f0 = Embedding(hparams['num_spk'], self.hidden_size)
+                self.spk_embed_dur = Embedding(hparams['num_spk'], self.hidden_size)
         elif hparams['use_spk_embed']:
             self.spk_embed_proj = Linear(256, self.hidden_size, bias=True)
 

@@ -91,16 +91,19 @@ class Svc:
         self.model.cuda()
         self.vocoder = NsfHifiGAN()
 
-    def infer(self, in_path, key, acc, use_crepe=True, singer=False, **kwargs):
-        batch = self.pre(in_path, acc, use_crepe)
+    def infer(self, in_path, key, acc, spk_id=0, use_crepe=True, singer=False, **kwargs):
+        batch = self.pre(in_path, acc, spk_id, use_crepe)
         batch['f0'] = batch['f0'] + (key / 12)
         batch['f0'][batch['f0'] > np.log2(hparams['f0_max'])] = 0
 
         @timeit
         def diff_infer():
             spk_embed = batch.get('spk_embed') if not hparams['use_spk_id'] else batch.get('spk_ids')
+            if spk_embed is None:
+                spk_embed = torch.LongTensor([0])
             diff_outputs = self.model(
-                batch['hubert'].cuda(), spk_embed=spk_embed, mel2ph=batch['mel2ph'].cuda(), f0=batch['f0'].cuda(),
+                batch['hubert'].cuda(), spk_embed=spk_embed.cuda(), mel2ph=batch['mel2ph'].cuda(),
+                f0=batch['f0'].cuda(),
                 uv=batch['uv'].cuda(), energy=batch['energy'].cuda(), ref_mels=batch["mels"].cuda(), infer=True,
                 **kwargs)
             return diff_outputs
@@ -145,13 +148,13 @@ class Svc:
         wav_pred = self.vocoder.spec2wav(mel_pred, f0=f0_pred)
         return f0_gt, f0_pred, wav_pred
 
-    def pre(self, wav_fn, accelerate, use_crepe=True):
+    def pre(self, wav_fn, accelerate, spk_id=0, use_crepe=True):
         if isinstance(wav_fn, BytesIO):
             item_name = self.project_name
         else:
             song_info = wav_fn.split('/')
             item_name = song_info[-1].split('.')[-2]
-        temp_dict = {'wav_fn': wav_fn, 'spk_id': self.project_name, 'id': 0}
+        temp_dict = {'wav_fn': wav_fn, 'spk_id': spk_id, 'id': 0}
 
         temp_dict = File2Batch.temporary_dict2processed_input(item_name, temp_dict, self.hubert, infer=True,
                                                               use_crepe=use_crepe)
@@ -188,6 +191,7 @@ def getitem(item):
     pitch = torch.LongTensor(item.get("pitch"))[:max_frames]
     sample = {
         "id": item['id'],
+        "spk_id": item['spk_id'],
         "item_name": item['item_name'],
         "hubert": hubert,
         "mel": spec,

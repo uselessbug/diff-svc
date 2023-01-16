@@ -3,14 +3,14 @@ accumulate_grad_batches: 1
 audio_num_mel_bins: 128
 audio_sample_rate: 44100
 binarization_args:
-  shuffle: false
+  shuffle: true
   with_spk_embed: false
 binarizer_cls: preprocessing.SVCpre.SVCBinarizer
-binary_data_dir: data/binary/testfox
+binary_data_dir: data/binary/svc_ms/
 check_val_every_n_epoch: 10
 choose_test_manually: false
 clip_grad_norm: 1
-config_path: training/config_nsf.yaml
+config_path: training/config_ms.yaml
 content_cond_steps: []
 datasets:
 - opencpop
@@ -84,7 +84,7 @@ norm_type: gn
 num_ckpt_keep: 10
 num_heads: 2
 num_sanity_val_steps: 1
-num_spk: 1
+num_spk: 2
 num_test_samples: 0
 num_valid_plots: 10
 optimizer_adam_beta1: 0.9
@@ -121,7 +121,9 @@ prenet_hidden_size: 256
 pretrain_fs_ckpt: ''
 processed_data_dir: xxx
 profile_infer: false
-raw_data_dir: data/raw/testfox
+raw_data_dir:
+  - data/raw/redfox
+  - data/raw/jishuang
 ref_norm_layer: bn
 rel_pos: true
 reset_phone_dict: true
@@ -139,7 +141,9 @@ save_gt: false
 schedule_type: linear
 seed: 1234
 sort_by_len: true
-speaker_id: testfox
+speakers:
+  - redfox
+  - jishuang
 spk_cond_steps: []
 stop_token_weight: 5.0
 task_cls: training.task.SVC_task.SVCTask
@@ -147,7 +151,13 @@ test_ids: []
 test_input_dir: ''
 test_num: 0
 test_prefixes:
-- test
+- zhibin-3298
+- zhibin-2230
+- zhibin-3279
+- zhibin-3163
+- luoxi-283
+- luoxi-984
+- luoxi-982
 test_set_name: test
 timesteps: 1000
 train_set_name: train
@@ -162,7 +172,7 @@ use_nsf: true
 use_pitch_embed: true
 use_pos_embed: true
 use_spk_embed: false
-use_spk_id: false
+use_spk_id: true
 use_split_spk_id: false
 use_uv: false
 use_var_enc: false
@@ -175,4 +185,4 @@ warmup_updates: 2000
 wav2spec_eps: 1e-6
 weight_decay: 0
 win_size: 2048
-work_dir: checkpoints/testfox
+work_dir: checkpoints/svc_ms

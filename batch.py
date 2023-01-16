@@ -11,11 +11,12 @@ from infer_tools.trans_key import trans_opencpop
 from utils.hparams import hparams
 
 
-def run_clip(raw_audio_path, svc_model, key, acc, use_crepe, auto_key=False, use_gt_mel=False, add_noise_step=500,
+def run_clip(raw_audio_path, svc_model, key, acc, use_crepe, spk_id=0, auto_key=False, use_gt_mel=False,
+             add_noise_step=500,
              units_mode=False):
     infer_tool.format_wav(raw_audio_path)
     key = svc_model.evaluate_key(raw_audio_path, key, auto_key)
-    _f0_tst, _f0_pred, _audio = svc_model.infer(raw_audio_path, key=key, acc=acc, use_crepe=use_crepe,
+    _f0_tst, _f0_pred, _audio = svc_model.infer(raw_audio_path, key=key, acc=acc, use_crepe=use_crepe, spk_id=spk_id,
                                                 singer=not units_mode, use_gt_mel=use_gt_mel,
                                                 add_noise_step=add_noise_step)
     if units_mode:
@@ -59,5 +60,6 @@ if __name__ == '__main__':
         if os.path.exists(Path(audio_path).with_suffix(".npy")) and units:
             print(f"{audio_path}:units已存在，跳过")
             continue
-        run_clip(audio_path, model, trans, accelerate, auto_key=auto_key, use_crepe=False, units_mode=units)
+        run_clip(audio_path, model, trans, accelerate, spk_id=spk_id, auto_key=auto_key, use_crepe=False,
+                 units_mode=units)
         print(f"\r\nnum:{count}\r\ntotal process:{round(count * 100 / len(wav_paths), 2)}%\r\n")

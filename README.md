@@ -10,6 +10,7 @@ Singing Voice Conversion via diffusion model
 
 ## updates:
 
+> 2023.01.16 增加多说话人支持(config_ms.yaml)，预处理代码参考diffsinger修改@小狼
 > 2023.01.09 \
 > 新增select.py筛选数据集音域（数据量足够时，删去重复音域部分，加快高低音收敛）\
 > 删除24k的pe、hifigan等依赖，删除pitch cwt模式，infer复用预处理部分代码@小狼
