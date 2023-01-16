@@ -145,6 +145,10 @@ speakers:
   - redfox
   - jishuang
 spk_cond_steps: []
+spec_max:
+- 0.0
+spec_min:
+- -5.0
 stop_token_weight: 5.0
 task_cls: training.task.SVC_task.SVCTask
 test_ids: []
