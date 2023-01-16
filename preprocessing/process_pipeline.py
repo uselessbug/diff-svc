@@ -1,6 +1,7 @@
 '''
     file -> temporary_dict -> processed_input -> batch
 '''
+import hashlib
 import json
 import os
 import time
