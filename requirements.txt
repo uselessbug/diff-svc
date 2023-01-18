@@ -1,4 +1,4 @@
-ssetuptools==59.5.0
+setuptools==59.5.0
 onnxruntimess
 torchcrepe
 matplotlib
