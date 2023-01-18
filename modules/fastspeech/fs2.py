@@ -69,7 +69,10 @@ class FastSpeech2(nn.Module):
                 spk_embed_dur_id = spk_embed_id
             if spk_embed_f0_id is None:
                 spk_embed_f0_id = spk_embed_id
-            spk_embed = self.spk_embed_proj(spk_embed_id)[:, None, :]
+            spk_embed_0 = self.spk_embed_proj(spk_embed_id.to(hubert.device))[:, None, :]
+            spk_embed_1 = self.spk_embed_proj(torch.LongTensor([0]).to(hubert.device))[:, None, :]
+            spk_embed_2 = self.spk_embed_proj(torch.LongTensor([0]).to(hubert.device))[:, None, :]
+            spk_embed = 1 * spk_embed_0 + 0 * spk_embed_1 + 0 * spk_embed_2
             spk_embed_dur = spk_embed_f0 = spk_embed
             if hparams['use_split_spk_id']:
                 spk_embed_dur = self.spk_embed_dur(spk_embed_dur_id)[:, None, :]
