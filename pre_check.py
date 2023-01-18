@@ -81,8 +81,14 @@ def test_part(test):
     res_str = ""
     print("\r\n*=====================")
     for k, v in test.items():
-        if os.path.exists(v):
-            print(f"{k}:  通过" + ("，绝对路径只能在当前平台运行，更换平台训练请使用相对路径" if os.path.isabs(v) else ""))
+        if isinstance(v, list):
+            for i in v:
+                if os.path.exists(i):
+                    print(f"{k}-{i}:  通过" + (
+                        "，绝对路径只能在当前平台运行，更换平台训练请使用相对路径" if os.path.isabs(i) else ""))
+        elif os.path.exists(v):
+            print(
+                f"{k}:  通过" + ("，绝对路径只能在当前平台运行，更换平台训练请使用相对路径" if os.path.isabs(v) else ""))
         else:
             print(f"{k}:  不通过")
             res_str += f"{k}:{solutions[k]}\r\n"
@@ -106,12 +112,14 @@ if __name__ == '__main__':
         project_path = path_list[int(a)]
         with open(project_path, "r") as f:
             data = yaml.safe_load(f)
+        with open("./training/base.yaml", "r") as f:
+            base = yaml.safe_load(f)
         test_model = {'yaml': data["config_path"], 'hubert': data["hubert_path"],
-                      'raw_data_dir': data["raw_data_dir"], 'vocoder': data["vocoder_ckpt"],
+                      'raw_data_dir': data["raw_data_dir"], 'vocoder': base["vocoder_ckpt"],
                       'config_path': data["config_path"]}
         try_except()
         yaml_path = data["config_path"]
-        model_name = data["raw_data_dir"].split("/")[-1]
+        model_name = data["binary_data_dir"].split("/")[-1]
         if test_part(test_model):
             if get_dir_size(data["binary_data_dir"]) > 100 * 1024 ** 2:
                 print("\r\ntrain.data通过初步检测（不排除数据集制作时的失误）")
