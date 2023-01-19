@@ -109,7 +109,8 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
         os.makedirs(hparams_['work_dir'], exist_ok=True)
         with open(ckpt_config_path, 'w', encoding='utf-8') as f:
             temp_haparams = hparams_
-            del temp_haparams['base_config']
+            if 'base_config' in temp_haparams.keys():
+                del temp_haparams['base_config']
             yaml.safe_dump(temp_haparams, f)
 
     hparams_['infer'] = args.infer
