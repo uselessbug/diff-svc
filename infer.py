@@ -12,7 +12,7 @@ from utils.hparams import hparams
 
 def run_clip(raw_audio_path, svc_model, key, acc, use_crepe, spk_id=0, auto_key=False, out_path=None, slice_db=-40,
              **kwargs):
-    print(f'code version:2023-01-18')
+    print(f'code version:2023-01-20')
 
     clean_name = Path(raw_audio_path).name.split(".")[0]
     infer_tool.format_wav(raw_audio_path)

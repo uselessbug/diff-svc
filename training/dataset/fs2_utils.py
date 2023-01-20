@@ -57,7 +57,7 @@ class FastSpeechDataset(BaseDataset):
         item = self._get_item(index)
         max_frames = hparams['max_frames']
         spec = torch.Tensor(item['mel'])[:max_frames]
-        energy = (spec.exp() ** 2).sum(-1).sqrt()
+        # energy = (spec.exp() ** 2).sum(-1).sqrt()
         mel2ph = torch.LongTensor(item['mel2ph'])[:max_frames] if 'mel2ph' in item else None
         f0, uv = norm_interp_f0(item["f0"][:max_frames], hparams)
         hubert = torch.Tensor(item['hubert'][:hparams['max_input_tokens']])
@@ -68,23 +68,20 @@ class FastSpeechDataset(BaseDataset):
             "hubert": hubert,
             "mel": spec,
             "pitch": pitch,
-            "energy": energy,
             "f0": f0,
             "uv": uv,
             "mel2ph": mel2ph,
             "mel_nonpadding": spec.abs().sum(-1) > 0,
         }
+        if hparams['use_energy_embed']:
+            sample['energy'] = item['energy']
         if hparams['use_spk_embed']:
             sample["spk_embed"] = torch.Tensor(item['spk_embed'])
         if hparams['use_spk_id']:
             sample["spk_id"] = item['spk_id']
-            # sample['spk_id'] = 0
-            # for key in self.name2spk_id.keys():s
-            #     if key in item['item_name']:
-            #         sample['spk_id'] = self.name2spk_id[key]
-            #         break
         return sample
 
+    # 被子类training.task.SVC_task.SVCDataset覆写
     @staticmethod
     def collater(samples):
         if len(samples) == 0:
@@ -131,7 +128,7 @@ class FastSpeechDataset(BaseDataset):
         return batch
 
     @staticmethod
-    def load_test_inputs(test_input_dir, spk_id=0):
+    def load_test_inputs(test_input_dir):
         inp_wav_paths = glob.glob(f'{test_input_dir}/*.wav') + glob.glob(f'{test_input_dir}/*.mp3')
         sizes = []
         items = []

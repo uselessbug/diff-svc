@@ -45,6 +45,7 @@ class BaseBinarizer:
     '''
 
     def __init__(self, data_dir=None, item_attributes=None):
+        self.spk_map = None
         self.vocoder = NsfHifiGAN()
         self.phone_encoder = Hubertencoder(pt_path=hparams['hubert_path'])
         if item_attributes is None:
@@ -102,7 +103,8 @@ class BaseBinarizer:
     def test_item_names(self):
         raise NotImplementedError
 
-    def build_spk_map(self):
+    @staticmethod
+    def build_spk_map():
         spk_map = {x: i for i, x in enumerate(hparams['speakers'])}
         assert len(spk_map) <= hparams['num_spk'], 'Actual number of speakers should be smaller than num_spk!'
         return spk_map
@@ -162,9 +164,6 @@ class BaseBinarizer:
             spec_max = np.max(spec_max, 0)
             spec_min = np.min(spec_min, 0)
             pitch_time = static_time(f0_dict)
-            effective_time = round(sum(pitch_time.values()), 2)
-            pitch_time['effective_time'] = effective_time
-            print(f"dataset effective time: {effective_time}s")
             with open(hparams['config_path'], encoding='utf-8') as f:
                 _hparams = yaml.safe_load(f)
                 _hparams['spec_max'] = spec_max.tolist()

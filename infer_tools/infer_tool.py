@@ -99,12 +99,12 @@ class Svc:
         @timeit
         def diff_infer():
             spk_embed = batch.get('spk_embed') if not hparams['use_spk_id'] else batch.get('spk_ids')
+            energy = batch.get('energy').cuda() if batch.get('energy') else None
             if spk_embed is None:
                 spk_embed = torch.LongTensor([0])
             diff_outputs = self.model(
                 batch['hubert'].cuda(), spk_embed=spk_embed.cuda(), mel2ph=batch['mel2ph'].cuda(),
-                f0=batch['f0'].cuda(),
-                uv=batch['uv'].cuda(), energy=batch['energy'].cuda(), ref_mels=batch["mels"].cuda(), infer=True,
+                f0=batch['f0'].cuda(), uv=batch['uv'].cuda(), energy=energy, ref_mels=batch["mels"].cuda(), infer=True,
                 **kwargs)
             return diff_outputs
 
@@ -184,7 +184,6 @@ class Svc:
 def getitem(item):
     max_frames = hparams['max_frames']
     spec = torch.Tensor(item['mel'])[:max_frames]
-    energy = (spec.exp() ** 2).sum(-1).sqrt()
     mel2ph = torch.LongTensor(item['mel2ph'])[:max_frames] if 'mel2ph' in item else None
     f0, uv = norm_interp_f0(item["f0"][:max_frames], hparams)
     hubert = torch.Tensor(item['hubert'][:hparams['max_input_tokens']])
@@ -196,10 +195,11 @@ def getitem(item):
         "hubert": hubert,
         "mel": spec,
         "pitch": pitch,
-        "energy": energy,
         "f0": f0,
         "uv": uv,
         "mel2ph": mel2ph,
         "mel_nonpadding": spec.abs().sum(-1) > 0,
     }
+    if hparams['use_energy_embed']:
+        sample['energy'] = item['energy']
     return sample
