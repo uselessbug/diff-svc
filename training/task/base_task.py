@@ -1,28 +1,27 @@
-from datetime import datetime
-import shutil
-
-import matplotlib
-
-matplotlib.use('Agg')
-
-from utils.hparams import hparams, set_hparams
-import random
-import sys
-import numpy as np
-import torch.distributed as dist
-from pytorch_lightning.loggers import TensorBoardLogger
-from utils.pl_utils import LatestModelCheckpoint, BaseTrainer, data_loader, DDP
-from torch import nn
-import torch.utils.data
-import utils
 import logging
 import os
+import random
+import shutil
+import sys
 
+import matplotlib
+import numpy as np
+import torch.distributed as dist
+import torch.utils.data
+from pytorch_lightning.loggers import TensorBoardLogger
+from torch import nn
+
+import utils
+from utils.hparams import hparams, set_hparams
+from utils.pl_utils import LatestModelCheckpoint, BaseTrainer, data_loader, DDP
+
+matplotlib.use('Agg')
 torch.multiprocessing.set_sharing_strategy(os.getenv('TORCH_SHARE_STRATEGY', 'file_system'))
 
 log_format = '%(asctime)s %(message)s'
 logging.basicConfig(stream=sys.stdout, level=logging.INFO,
                     format=log_format, datefmt='%m/%d %I:%M:%S %p')
+
 
 class BaseTask(nn.Module):
     '''
@@ -46,6 +45,7 @@ class BaseTask(nn.Module):
         3. *validation_end* and *_validation_end*:
             postprocess the validation output.
     '''
+
     def __init__(self, *args, **kwargs):
         # dataset configs
         super(BaseTask, self).__init__(*args, **kwargs)
@@ -197,26 +197,26 @@ class BaseTask(nn.Module):
         task = cls()
         work_dir = hparams['work_dir']
         trainer = BaseTrainer(checkpoint_callback=LatestModelCheckpoint(
-                                  filepath=work_dir,
-                                  verbose=True,
-                                  monitor='val_loss',
-                                  mode='min',
-                                  num_ckpt_keep=hparams['num_ckpt_keep'],
-                                  save_best=hparams['save_best'],
-                                  period=1 if hparams['save_ckpt'] else 100000
-                              ),
-                              logger=TensorBoardLogger(
-                                  save_dir=work_dir,
-                                  name='lightning_logs',
-                                  version='lastest'
-                              ),
-                              gradient_clip_val=hparams['clip_grad_norm'],
-                              val_check_interval=hparams['val_check_interval'],
-                              row_log_interval=hparams['log_interval'],
-                              max_updates=hparams['max_updates'],
-                              num_sanity_val_steps=hparams['num_sanity_val_steps'] if not hparams[
-                                  'validate'] else 10000,
-                              accumulate_grad_batches=hparams['accumulate_grad_batches'])
+            filepath=work_dir,
+            verbose=True,
+            monitor='val_loss',
+            mode='min',
+            num_ckpt_keep=hparams['num_ckpt_keep'],
+            save_best=hparams['save_best'],
+            period=1 if hparams['save_ckpt'] else 100000
+        ),
+            logger=TensorBoardLogger(
+                save_dir=work_dir,
+                name='lightning_logs',
+                version='lastest'
+            ),
+            gradient_clip_val=hparams['clip_grad_norm'],
+            val_check_interval=hparams['val_check_interval'],
+            row_log_interval=hparams['log_interval'],
+            max_updates=hparams['max_updates'],
+            num_sanity_val_steps=hparams['num_sanity_val_steps'] if not hparams[
+                'validate'] else 10000,
+            accumulate_grad_batches=hparams['accumulate_grad_batches'])
         if not hparams['infer']:  # train
             # Copy spk_map.json to work dir
             spk_map = os.path.join(work_dir, 'spk_map.json')
