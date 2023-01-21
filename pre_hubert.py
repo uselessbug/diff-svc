@@ -5,10 +5,10 @@ import numpy as np
 from tqdm import tqdm
 
 from infer_tools import infer_tool
-from preprocessing.hubertinfer import Hubertencoder
+from preprocessing.hubertinfer import HubertEncoder
 
 # hubert_mode可选——"soft_hubert"、"cn_hubert"
-hubert_model = Hubertencoder(hubert_mode='soft_hubert')
+hubert_model = HubertEncoder(hubert_mode='soft_hubert')
 # 自动搜索batch文件夹下所有wav文件，可自行更改路径
 wav_paths = infer_tool.get_end_file("./batch", "wav")
 with tqdm(total=len(wav_paths)) as p_bar:

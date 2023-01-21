@@ -1,21 +1,27 @@
-'''
-    file -> temporary_dict -> processed_input -> batch
-'''
 import hashlib
 import json
 import os
 import time
 import traceback
+import warnings
 from pathlib import Path
 
 import numpy as np
+import parselmouth
+import resampy
 import torch
+import torchcrepe
 
 import utils
-from network.vocoders.nsf_hifigan import nsf_hifigan
+from modules.vocoders.nsf_hifigan import nsf_hifigan
 from utils.hparams import hparams
-from .base_binarizer import BinarizationError
-from .data_gen_utils import get_pitch_parselmouth, get_pitch_crepe
+from utils.pitch_utils import f0_to_coarse
+
+warnings.filterwarnings("ignore")
+
+
+class BinarizationError(Exception):
+    pass
 
 
 def get_md5(content):
@@ -51,6 +57,66 @@ def write_temp(file_name, data):
 
 
 f0_dict = read_temp("./infer_tools/f0_temp.json")
+
+
+def get_pitch_parselmouth(wav_data, mel, hparams):
+    """
+
+    :param wav_data: [T]
+    :param mel: [T, 80]
+    :param hparams:
+    :return:
+    """
+    time_step = hparams['hop_size'] / hparams['audio_sample_rate']
+    f0_min = hparams['f0_min']
+    f0_max = hparams['f0_max']
+
+    f0 = parselmouth.Sound(wav_data, hparams['audio_sample_rate']).to_pitch_ac(
+        time_step=time_step, voicing_threshold=0.6,
+        pitch_floor=f0_min, pitch_ceiling=f0_max).selected_array['frequency']
+
+    pad_size = (int(len(wav_data) // hparams['hop_size']) - len(f0) + 1) // 2
+    f0 = np.pad(f0, [[pad_size, len(mel) - len(f0) - pad_size]], mode='constant')
+    pitch_coarse = f0_to_coarse(f0, hparams)
+    return f0, pitch_coarse
+
+
+def get_pitch_crepe(wav_data, mel, hparams, threshold=0.05):
+    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda")
+    # crepe只支持16khz采样率，需要重采样
+    wav16k = resampy.resample(wav_data, hparams['audio_sample_rate'], 16000)
+    wav16k_torch = torch.FloatTensor(wav16k).unsqueeze(0).to(device)
+
+    # 频率范围
+    f0_min = hparams['f0_min']
+    f0_max = hparams['f0_max']
+
+    # 重采样后按照hopsize=80,也就是5ms一帧分析f0
+    f0, pd = torchcrepe.predict(wav16k_torch, 16000, 80, f0_min, f0_max, pad=True, model='full', batch_size=1024,
+                                device=device, return_periodicity=True)
+
+    # 滤波，去掉静音，设置uv阈值，参考原仓库readme
+    pd = torchcrepe.filter.median(pd, 3)
+    pd = torchcrepe.threshold.Silence(-60.)(pd, wav16k_torch, 16000, 80)
+    f0 = torchcrepe.threshold.At(threshold)(f0, pd)
+    f0 = torchcrepe.filter.mean(f0, 3)
+
+    # 将nan频率（uv部分）转换为0频率
+    f0 = torch.where(torch.isnan(f0), torch.full_like(f0, 0), f0)
+
+    # 去掉0频率，并线性插值
+    nzindex = torch.nonzero(f0[0]).squeeze()
+    f0 = torch.index_select(f0[0], dim=0, index=nzindex).cpu().numpy()
+    time_org = 0.005 * nzindex.cpu().numpy()
+    time_frame = np.arange(len(mel)) * hparams['hop_size'] / hparams['audio_sample_rate']
+    if f0.shape[0] == 0:
+        f0 = torch.FloatTensor(time_frame.shape[0]).fill_(0)
+        print('f0 all zero!')
+    else:
+        f0 = np.interp(time_frame, time_org, f0, left=f0[0], right=f0[-1])
+    pitch_coarse = f0_to_coarse(f0, hparams)
+    return f0, pitch_coarse
 
 
 class File2Batch:

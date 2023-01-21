@@ -5,12 +5,11 @@ audio_sample_rate: 44100
 binarization_args:
   shuffle: false
   with_spk_embed: false
-binarizer_cls: preprocessing.SVCpre.SVCBinarizer
+binarizer_cls: preprocessing.svc_binarizer.SvcBinarizer
 check_val_every_n_epoch: 10
 choose_test_manually: false
 clip_grad_norm: 1
 content_cond_steps: []
-debug: false
 dec_ffn_kernel_size: 9
 dec_layers: 4
 decoder_type: fft
@@ -92,14 +91,6 @@ pitch_loss: l2
 pitch_norm: log
 pitch_type: frame
 pndm_speedup: 10
-pre_align_args:
-  allow_no_txt: false
-  denoise: false
-  forced_align: mfa
-  txt_processor: zh_g2pM
-  use_sox: true
-  use_tone: false
-pre_align_cls: data_gen.singing.pre_align.SingingPreAlign
 predictor_dropout: 0.5
 predictor_grad: 0.1
 predictor_hidden: -1
@@ -128,7 +119,7 @@ sort_by_len: true
 spk_cond_steps: []
 speaker_id: single
 stop_token_weight: 5.0
-task_cls: training.task.SVC_task.SVCTask
+task_cls: training.svc_task.SvcTask
 test_ids: []
 test_input_dir: ''
 timesteps: 1000
@@ -138,7 +129,6 @@ use_denoise: false
 use_energy_embed: false
 use_gt_dur: false
 use_gt_f0: false
-use_midi: false
 use_nsf: true
 use_pitch_embed: true
 use_pos_embed: true
@@ -149,7 +139,7 @@ use_uv: false
 use_var_enc: false
 valid_num: 0
 valid_set_name: valid
-vocoder: network.vocoders.nsf_hifigan.NsfHifiGAN
+vocoder: moudles.vocoders.nsf_hifigan.NsfHifiGAN
 vocoder_ckpt: checkpoints/nsf_hifigan/model
 warmup_updates: 2000
 wav2spec_eps: 1e-6

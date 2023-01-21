@@ -1,23 +1,81 @@
+import torch
+
 from modules.commons.common_layers import *
 from modules.commons.common_layers import Embedding
-from modules.fastspeech.tts_modules import FastspeechDecoder, PitchPredictor, \
-    FastspeechEncoder
+from modules.commons.common_layers import SinusoidalPositionalEmbedding
 from utils.hparams import hparams
 from utils.pitch_utils import f0_to_coarse, denorm_f0
 
-FS_ENCODERS = {
-    'fft': lambda hp: FastspeechEncoder(
-        hp['hidden_size'], hp['enc_layers'], hp['enc_ffn_kernel_size'],
-        num_heads=hp['num_heads']),
-}
 
-FS_DECODERS = {
-    'fft': lambda hp: FastspeechDecoder(
-        hp['hidden_size'], hp['dec_layers'], hp['dec_ffn_kernel_size'], hp['num_heads']),
-}
+class LayerNorm(torch.nn.LayerNorm):
+    """Layer normalization module.
+    :param int nout: output dim size
+    :param int dim: dimension to be normalized
+    """
+
+    def __init__(self, nout, dim=-1):
+        """Construct an LayerNorm object."""
+        super(LayerNorm, self).__init__(nout, eps=1e-12)
+        self.dim = dim
+
+    def forward(self, x):
+        """Apply layer normalization.
+        :param torch.Tensor x: input tensor
+        :return: layer normalized tensor
+        :rtype torch.Tensor
+        """
+        if self.dim == -1:
+            return super(LayerNorm, self).forward(x)
+        return super(LayerNorm, self).forward(x.transpose(1, -1)).transpose(1, -1)
 
 
-class FastSpeech2(nn.Module):
+class PitchPredictor(torch.nn.Module):
+    def __init__(self, idim, n_layers=5, n_chans=384, odim=2, kernel_size=5,
+                 dropout_rate=0.1, padding='SAME'):
+        """Initilize pitch predictor module.
+        Args:
+            idim (int): Input dimension.
+            n_layers (int, optional): Number of convolutional layers.
+            n_chans (int, optional): Number of channels of convolutional layers.
+            kernel_size (int, optional): Kernel size of convolutional layers.
+            dropout_rate (float, optional): Dropout rate.
+        """
+        super(PitchPredictor, self).__init__()
+        self.conv = torch.nn.ModuleList()
+        self.kernel_size = kernel_size
+        self.padding = padding
+        for idx in range(n_layers):
+            in_chans = idim if idx == 0 else n_chans
+            self.conv += [torch.nn.Sequential(
+                torch.nn.ConstantPad1d(((kernel_size - 1) // 2, (kernel_size - 1) // 2)
+                                       if padding == 'SAME'
+                                       else (kernel_size - 1, 0), 0),
+                torch.nn.Conv1d(in_chans, n_chans, kernel_size, stride=1, padding=0),
+                torch.nn.ReLU(),
+                LayerNorm(n_chans, dim=1),
+                torch.nn.Dropout(dropout_rate)
+            )]
+        self.linear = torch.nn.Linear(n_chans, odim)
+        self.embed_positions = SinusoidalPositionalEmbedding(idim, 0, init_size=4096)
+        self.pos_embed_alpha = nn.Parameter(torch.Tensor([1]))
+
+    def forward(self, xs):
+        """
+
+        :param xs: [B, T, H]
+        :return: [B, T, H]
+        """
+        positions = self.pos_embed_alpha * self.embed_positions(xs[..., 0])
+        xs = xs + positions
+        xs = xs.transpose(1, -1)  # (B, idim, Tmax)
+        for f in self.conv:
+            xs = f(xs)  # (B, C, Tmax)
+        # NOTE: calculate in log domain
+        xs = self.linear(xs.transpose(1, -1))  # (B, Tmax, H)
+        return xs
+
+
+class SvcEncoder(nn.Module):
     def __init__(self, dictionary, out_dims=None):
         super().__init__()
         # self.dictionary = dictionary

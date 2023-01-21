@@ -5,6 +5,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import torch.distributed as dist
 import torch.distributions
 import torch.nn.functional as F
 import torch.optim
@@ -13,23 +14,34 @@ from tqdm import tqdm
 
 import utils
 from modules.commons.ssim import ssim
-from modules.fastspeech.tts_modules import mel2ph_to_dur
-from preprocessing.data_gen_utils import get_pitch_parselmouth
-from training.dataset.fs2_utils import FastSpeechDataset
-from training.task.tts import TtsTask
+from modules.diff.diffusion import GaussianDiffusion
+from modules.diff.net import DiffNet
+from modules.vocoders.nsf_hifigan import NsfHifiGAN, nsf_hifigan
+from preprocessing.hubertinfer import HubertEncoder
+from preprocessing.process_pipeline import get_pitch_parselmouth
+from training.base_task import BaseTask
 from utils import audio
 from utils.hparams import hparams
 from utils.pitch_utils import denorm_f0
 from utils.pl_utils import data_loader
-from utils.plot import spec_to_figure, dur_to_figure, f0_to_figure
+from utils.plot import spec_to_figure, f0_to_figure
+from utils.svc_utils import SvcDataset
 
 matplotlib.use('Agg')
+DIFF_DECODERS = {
+    'wavenet': lambda hp: DiffNet(hp['audio_num_mel_bins'])
+}
 
 
-class FastSpeech2Task(TtsTask):
+class SvcTask(BaseTask):
     def __init__(self):
-        super(FastSpeech2Task, self).__init__()
-        self.dataset_cls = FastSpeechDataset
+        super(SvcTask, self).__init__()
+        self.vocoder = NsfHifiGAN()
+        self.phone_encoder = HubertEncoder(hparams['hubert_path'])
+        self.saving_result_pool = None
+        self.saving_results_futures = None
+        self.stats = {}
+        self.dataset_cls = SvcDataset
         self.mse_loss_fn = torch.nn.MSELoss()
         mel_losses = hparams['mel_loss'].split("|")
         self.loss_and_lambda = {}
@@ -43,7 +55,63 @@ class FastSpeech2Task(TtsTask):
                 lbd = 1.0
             self.loss_and_lambda[l] = lbd
         print("| Mel losses:", self.loss_and_lambda)
-        # self.sil_ph = self.phone_encoder.sil_phonemes()
+
+    def build_dataloader(self, dataset, shuffle, max_tokens=None, max_sentences=None,
+                         required_batch_size_multiple=-1, endless=False, batch_by_size=True):
+        devices_cnt = torch.cuda.device_count()
+        if devices_cnt == 0:
+            devices_cnt = 1
+        if required_batch_size_multiple == -1:
+            required_batch_size_multiple = devices_cnt
+
+        def shuffle_batches(batches):
+            np.random.shuffle(batches)
+            return batches
+
+        if max_tokens is not None:
+            max_tokens *= devices_cnt
+        if max_sentences is not None:
+            max_sentences *= devices_cnt
+        indices = dataset.ordered_indices()
+        if batch_by_size:
+            batch_sampler = utils.batch_by_size(
+                indices, dataset.num_tokens, max_tokens=max_tokens, max_sentences=max_sentences,
+                required_batch_size_multiple=required_batch_size_multiple,
+            )
+        else:
+            batch_sampler = []
+            for i in range(0, len(indices), max_sentences):
+                batch_sampler.append(indices[i:i + max_sentences])
+
+        if shuffle:
+            batches = shuffle_batches(list(batch_sampler))
+            if endless:
+                batches = [b for _ in range(1000) for b in shuffle_batches(list(batch_sampler))]
+        else:
+            batches = batch_sampler
+            if endless:
+                batches = [b for _ in range(1000) for b in batches]
+        num_workers = dataset.num_workers
+        if self.trainer.use_ddp:
+            num_replicas = dist.get_world_size()
+            rank = dist.get_rank()
+            batches = [x[rank::num_replicas] for x in batches if len(x) % num_replicas == 0]
+        return torch.utils.data.DataLoader(dataset,
+                                           collate_fn=dataset.collater,
+                                           batch_sampler=batches,
+                                           num_workers=num_workers,
+                                           pin_memory=False)
+
+    def test_start(self):
+        self.saving_result_pool = Pool(8)
+        self.saving_results_futures = []
+        self.vocoder = nsf_hifigan
+
+    def test_end(self, outputs):
+        self.saving_result_pool.close()
+        [f.get() for f in tqdm(self.saving_results_futures)]
+        self.saving_result_pool.join()
+        return {}
 
     @data_loader
     def train_dataloader(self):
@@ -62,13 +130,6 @@ class FastSpeech2Task(TtsTask):
         return self.build_dataloader(test_dataset, False, self.max_eval_tokens,
                                      self.max_eval_sentences, batch_by_size=False)
 
-    def build_tts_model(self):
-        """
-        rewrite
-        """
-        return
-        # self.model = FastSpeech2(self.phone_encoder)
-
     def build_model(self):
         self.build_tts_model()
         if hparams['load_ckpt'] != '':
@@ -76,34 +137,96 @@ class FastSpeech2Task(TtsTask):
         utils.print_arch(self.model)
         return self.model
 
+    def build_tts_model(self):
+        mel_bins = hparams['audio_num_mel_bins']
+        self.model = GaussianDiffusion(
+            phone_encoder=self.phone_encoder,
+            out_dims=mel_bins, denoise_fn=DIFF_DECODERS[hparams['diff_decoder_type']](hparams),
+            timesteps=hparams['timesteps'],
+            K_step=hparams['K_step'],
+            loss_type=hparams['diff_loss_type'],
+            spec_min=hparams['spec_min'], spec_max=hparams['spec_max'],
+        )
+
+    def build_optimizer(self, model):
+        self.optimizer = optimizer = torch.optim.AdamW(
+            filter(lambda p: p.requires_grad, model.parameters()),
+            lr=hparams['lr'],
+            betas=(hparams['optimizer_adam_beta1'], hparams['optimizer_adam_beta2']),
+            weight_decay=hparams['weight_decay'])
+        return optimizer
+
+    @staticmethod
+    def run_model(model, sample, return_output=False, infer=False):
+        '''
+            steps:
+            1. run the full model, calc the main loss
+            2. calculate loss for dur_predictor, pitch_predictor, energy_predictor
+        '''
+        hubert = sample['hubert']  # [B, T_t,H]
+        target = sample['mels']  # [B, T_s, 80]
+        mel2ph = sample['mel2ph']  # [B, T_s]
+        f0 = sample['f0']
+        uv = sample['uv']
+        energy = sample.get('energy')
+
+        spk_embed = sample.get('spk_embed') if not hparams['use_spk_id'] else sample.get('spk_ids')
+        output = model(hubert, mel2ph=mel2ph, spk_embed=spk_embed,
+                       ref_mels=target, f0=f0, uv=uv, energy=energy, infer=infer)
+
+        losses = {}
+        if 'diff_loss' in output:
+            losses['mel'] = output['diff_loss']
+        if not return_output:
+            return losses
+        else:
+            return losses, output
+
+    def build_scheduler(self, optimizer):
+        return torch.optim.lr_scheduler.StepLR(optimizer, hparams['decay_steps'], gamma=0.5)
+
     def _training_step(self, sample, batch_idx, _):
-        """
-        rewrite
-        """
-        return
-        # loss_output = self.run_model(self.model, sample)
-        # total_loss = sum([v for v in loss_output.values() if isinstance(v, torch.Tensor) and v.requires_grad])
-        # loss_output['batch_size'] = sample['txt_tokens'].size()[0]
-        # return total_loss, loss_output
+        log_outputs = self.run_model(self.model, sample)
+        total_loss = sum([v for v in log_outputs.values() if isinstance(v, torch.Tensor) and v.requires_grad])
+        log_outputs['batch_size'] = sample['hubert'].size()[0]
+        log_outputs['lr'] = self.scheduler.get_lr()[0]
+        return total_loss, log_outputs
+
+    def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_idx):
+        if optimizer is None:
+            return
+        optimizer.step()
+        optimizer.zero_grad()
+        if self.scheduler is not None:
+            self.scheduler.step(self.global_step // hparams['accumulate_grad_batches'])
 
     def validation_step(self, sample, batch_idx):
-        """
-        rewrite
-        """
-        return
-        # outputs = {}
-        # outputs['losses'] = {}
-        # outputs['losses'], model_out = self.run_model(self.model, sample, return_output=True)
-        # outputs['total_loss'] = sum(outputs['losses'].values())
-        # outputs['nsamples'] = sample['nsamples']
-        # mel_out = self.model.out2mel(model_out['mel_out'])
-        # outputs = utils.tensors_to_scalars(outputs)
-        # if batch_idx < hparams['num_valid_plots']:
-        #     self.plot_mel(batch_idx, sample['mels'], mel_out)
-        #     self.plot_dur(batch_idx, sample, model_out)
-        #     if hparams['use_pitch_embed']:
-        #         self.plot_pitch(batch_idx, sample, model_out)
-        # return outputs
+        outputs = {}
+        hubert = sample['hubert']  # [B, T_t]
+        energy = sample.get('energy')
+        spk_embed = sample.get('spk_embed') if not hparams['use_spk_id'] else sample.get('spk_ids')
+        mel2ph = sample['mel2ph']
+
+        outputs['losses'] = {}
+
+        outputs['losses'], model_out = self.run_model(self.model, sample, return_output=True, infer=False)
+
+        outputs['total_loss'] = sum(outputs['losses'].values())
+        outputs['nsamples'] = sample['nsamples']
+        outputs = utils.tensors_to_scalars(outputs)
+        if batch_idx < hparams['num_valid_plots']:
+            model_out = self.model(
+                hubert, spk_embed=spk_embed, mel2ph=mel2ph, f0=sample['f0'], uv=sample['uv'], energy=energy,
+                ref_mels=None, infer=True
+            )
+
+            gt_f0 = denorm_f0(sample['f0'], sample['uv'], hparams)
+            pred_f0 = model_out.get('f0_denorm')
+            self.plot_wav(batch_idx, sample['mels'], model_out['mel_out'], is_mel=True, gt_f0=gt_f0, f0=pred_f0)
+            self.plot_mel(batch_idx, sample['mels'], model_out['mel_out'], name=f'diffmel_{batch_idx}')
+            if hparams['use_pitch_embed']:
+                self.plot_pitch(batch_idx, sample, model_out)
+        return outputs
 
     def _validation_end(self, outputs):
         all_losses_meter = {
@@ -117,33 +240,6 @@ class FastSpeech2Task(TtsTask):
                 all_losses_meter[k].update(v, n)
             all_losses_meter['total_loss'].update(output['total_loss'], n)
         return {k: round(v.avg, 4) for k, v in all_losses_meter.items()}
-
-    def run_model(self, model, sample, return_output=False):
-        """
-        rewrite
-        """
-        return
-        txt_tokens = sample['txt_tokens']  # [B, T_t]
-        target = sample['mels']  # [B, T_s, 80]
-        mel2ph = sample['mel2ph']  # [B, T_s]
-        f0 = sample['f0']
-        uv = sample['uv']
-        energy = sample['energy']
-        spk_embed = sample.get('spk_embed') if not hparams['use_spk_id'] else sample.get('spk_ids')
-        output = model(txt_tokens, mel2ph=mel2ph, spk_embed=spk_embed,
-                       ref_mels=target, f0=f0, uv=uv, energy=energy, infer=False)
-
-        losses = {}
-        self.add_mel_loss(output['mel_out'], target, losses)
-        self.add_dur_loss(output['dur'], mel2ph, txt_tokens, losses=losses)
-        if hparams['use_pitch_embed']:
-            self.add_pitch_loss(output, sample, losses)
-        if hparams['use_energy_embed']:
-            self.add_energy_loss(output['energy_pred'], energy, losses)
-        if not return_output:
-            return losses
-        else:
-            return losses, output
 
     ############
     # losses
@@ -182,50 +278,6 @@ class FastSpeech2Task(TtsTask):
         ssim_loss = (ssim_loss * weights).sum() / weights.sum()
         return ssim_loss
 
-    def add_dur_loss(self, dur_pred, mel2ph, txt_tokens, losses=None):
-        """
-
-        :param dur_pred: [B, T], float, log scale
-        :param mel2ph: [B, T]
-        :param txt_tokens: [B, T]
-        :param losses:
-        :return:
-        """
-        B, T = txt_tokens.shape
-        nonpadding = (txt_tokens != 0).float()
-        dur_gt = mel2ph_to_dur(mel2ph, T).float() * nonpadding
-        is_sil = torch.zeros_like(txt_tokens).bool()
-        for p in self.sil_ph:
-            is_sil = is_sil | (txt_tokens == self.phone_encoder.encode(p)[0])
-        is_sil = is_sil.float()  # [B, T_txt]
-
-        # phone duration loss
-        if hparams['dur_loss'] == 'mse':
-            losses['pdur'] = F.mse_loss(dur_pred, (dur_gt + 1).log(), reduction='none')
-            losses['pdur'] = (losses['pdur'] * nonpadding).sum() / nonpadding.sum()
-            dur_pred = (dur_pred.exp() - 1).clamp(min=0)
-        elif hparams['dur_loss'] == 'mog':
-            return NotImplementedError
-        elif hparams['dur_loss'] == 'crf':
-            losses['pdur'] = -self.model.dur_predictor.crf(
-                dur_pred, dur_gt.long().clamp(min=0, max=31), mask=nonpadding > 0, reduction='mean')
-        losses['pdur'] = losses['pdur'] * hparams['lambda_ph_dur']
-
-        # use linear scale for sent and word duration
-        if hparams['lambda_word_dur'] > 0:
-            word_id = (is_sil.cumsum(-1) * (1 - is_sil)).long()
-            word_dur_p = dur_pred.new_zeros([B, word_id.max() + 1]).scatter_add(1, word_id, dur_pred)[:, 1:]
-            word_dur_g = dur_gt.new_zeros([B, word_id.max() + 1]).scatter_add(1, word_id, dur_gt)[:, 1:]
-            wdur_loss = F.mse_loss((word_dur_p + 1).log(), (word_dur_g + 1).log(), reduction='none')
-            word_nonpadding = (word_dur_g > 0).float()
-            wdur_loss = (wdur_loss * word_nonpadding).sum() / word_nonpadding.sum()
-            losses['wdur'] = wdur_loss * hparams['lambda_word_dur']
-        if hparams['lambda_sent_dur'] > 0:
-            sent_dur_p = dur_pred.sum(-1)
-            sent_dur_g = dur_gt.sum(-1)
-            sdur_loss = F.mse_loss((sent_dur_p + 1).log(), (sent_dur_g + 1).log(), reduction='mean')
-            losses['sdur'] = sdur_loss.mean() * hparams['lambda_sent_dur']
-
     def add_pitch_loss(self, output, sample, losses):
         if hparams['pitch_type'] == 'ph':
             nonpadding = (sample['txt_tokens'] != 0).float()
@@ -241,7 +293,8 @@ class FastSpeech2Task(TtsTask):
         if hparams['pitch_type'] == 'frame':
             self.add_f0_loss(output['pitch_pred'], f0, uv, losses, nonpadding=nonpadding)
 
-    def add_f0_loss(self, p_pred, f0, uv, losses, nonpadding):
+    @staticmethod
+    def add_f0_loss(p_pred, f0, uv, losses, nonpadding):
         assert p_pred[..., 0].shape == f0.shape
         if hparams['use_uv']:
             assert p_pred[..., 1].shape == uv.shape
@@ -258,7 +311,8 @@ class FastSpeech2Task(TtsTask):
         elif hparams['pitch_loss'] == 'ssim':
             return NotImplementedError
 
-    def add_energy_loss(self, energy_pred, energy, losses):
+    @staticmethod
+    def add_energy_loss(energy_pred, energy, losses):
         nonpadding = (energy != 0).float()
         loss = (F.mse_loss(energy_pred, energy, reduction='none') * nonpadding).sum() / nonpadding.sum()
         loss = loss * hparams['lambda_energy']
@@ -273,15 +327,6 @@ class FastSpeech2Task(TtsTask):
         vmin = hparams['mel_vmin']
         vmax = hparams['mel_vmax']
         self.logger.experiment.add_figure(name, spec_to_figure(spec_cat[0], vmin, vmax), self.global_step)
-
-    def plot_dur(self, batch_idx, sample, model_out):
-        T_txt = sample['txt_tokens'].shape[1]
-        dur_gt = mel2ph_to_dur(sample['mel2ph'], T_txt)[0]
-        dur_pred = self.model.dur_predictor.out2dur(model_out['dur']).float()
-        txt = self.phone_encoder.decode(sample['txt_tokens'][0].cpu().numpy())
-        txt = txt.split(" ")
-        self.logger.experiment.add_figure(
-            f'dur_{batch_idx}', dur_to_figure(dur_gt, dur_pred, txt), self.global_step)
 
     def plot_pitch(self, batch_idx, sample, model_out):
         f0 = sample['f0']
@@ -298,34 +343,36 @@ class FastSpeech2Task(TtsTask):
             self.logger.experiment.add_figure(
                 f'f0_{batch_idx}', f0_to_figure(f0[0], None, pitch_pred[0]), self.global_step)
 
+    def plot_wav(self, batch_idx, gt_wav, wav_out, is_mel=False, gt_f0=None, f0=None, name=None):
+        gt_wav = gt_wav[0].cpu().numpy()
+        wav_out = wav_out[0].cpu().numpy()
+        gt_f0 = gt_f0[0].cpu().numpy()
+        f0 = f0[0].cpu().numpy()
+        if is_mel:
+            gt_wav = self.vocoder.spec2wav(gt_wav, f0=gt_f0)
+            wav_out = self.vocoder.spec2wav(wav_out, f0=f0)
+        self.logger.experiment.add_audio(f'gt_{batch_idx}', gt_wav, sample_rate=hparams['audio_sample_rate'],
+                                         global_step=self.global_step)
+        self.logger.experiment.add_audio(f'wav_{batch_idx}', wav_out, sample_rate=hparams['audio_sample_rate'],
+                                         global_step=self.global_step)
+
     ############
     # infer
     ############
     def test_step(self, sample, batch_idx):
         spk_embed = sample.get('spk_embed') if not hparams['use_spk_id'] else sample.get('spk_ids')
         hubert = sample['hubert']
-        mel2ph, uv, f0 = None, None, None
         ref_mels = None
-        if hparams['profile_infer']:
-            pass
-        else:
-            # if hparams['use_gt_dur']:
-            mel2ph = sample['mel2ph']
-            # if hparams['use_gt_f0']:
-            f0 = sample['f0']
-            uv = sample['uv']
-            # print('Here using gt f0!!')
-            if hparams.get('use_midi') is not None and hparams['use_midi']:
-                outputs = self.model(
-                    hubert, spk_embed=spk_embed, mel2ph=mel2ph, f0=f0, uv=uv, ref_mels=ref_mels, infer=True)
-            else:
-                outputs = self.model(
-                    hubert, spk_embed=spk_embed, mel2ph=mel2ph, f0=f0, uv=uv, ref_mels=ref_mels, infer=True)
-            sample['outputs'] = self.model.out2mel(outputs['mel_out'])
-            sample['mel2ph_pred'] = outputs['mel2ph']
-            sample['f0'] = denorm_f0(sample['f0'], sample['uv'], hparams)
-            sample['f0_pred'] = outputs.get('f0_denorm')
-            return self.after_infer(sample)
+        mel2ph = sample['mel2ph']
+        f0 = sample['f0']
+        uv = sample['uv']
+        outputs = self.model(hubert, spk_embed=spk_embed, mel2ph=mel2ph, f0=f0, uv=uv, ref_mels=ref_mels,
+                             infer=True)
+        sample['outputs'] = self.model.out2mel(outputs['mel_out'])
+        sample['mel2ph_pred'] = outputs['mel2ph']
+        sample['f0'] = denorm_f0(sample['f0'], sample['uv'], hparams)
+        sample['f0_pred'] = outputs.get('f0_denorm')
+        return self.after_infer(sample)
 
     def after_infer(self, predictions):
         if self.saving_result_pool is None and not hparams['profile_infer']:
@@ -344,19 +391,11 @@ class FastSpeech2Task(TtsTask):
             mel_gt = prediction["mels"]
             mel_gt_mask = np.abs(mel_gt).sum(-1) > 0
             mel_gt = mel_gt[mel_gt_mask]
-            mel2ph_gt = prediction.get("mel2ph")
-            mel2ph_gt = mel2ph_gt[mel_gt_mask] if mel2ph_gt is not None else None
             mel_pred = prediction["outputs"]
             mel_pred_mask = np.abs(mel_pred).sum(-1) > 0
             mel_pred = mel_pred[mel_pred_mask]
             mel_gt = np.clip(mel_gt, hparams['mel_vmin'], hparams['mel_vmax'])
             mel_pred = np.clip(mel_pred, hparams['mel_vmin'], hparams['mel_vmax'])
-
-            mel2ph_pred = prediction.get("mel2ph_pred")
-            if mel2ph_pred is not None:
-                if len(mel2ph_pred) > len(mel_pred_mask):
-                    mel2ph_pred = mel2ph_pred[:len(mel_pred_mask)]
-                mel2ph_pred = mel2ph_pred[mel_pred_mask]
 
             f0_gt = prediction.get("f0")
             f0_pred = f0_gt
@@ -365,8 +404,6 @@ class FastSpeech2Task(TtsTask):
                 if len(f0_pred) > len(mel_pred_mask):
                     f0_pred = f0_pred[:len(mel_pred_mask)]
                 f0_pred = f0_pred[mel_pred_mask]
-            text = None
-            str_phs = None
             gen_dir = os.path.join(hparams['work_dir'],
                                    f'generated_{self.trainer.global_step}_{hparams["gen_dir_name"]}')
             wav_pred = self.vocoder.spec2wav(mel_pred, f0=f0_pred)
@@ -378,13 +415,13 @@ class FastSpeech2Task(TtsTask):
                 os.makedirs(os.path.join(hparams['work_dir'], 'G_mels_npy'), exist_ok=True)
                 self.saving_results_futures.append(
                     self.saving_result_pool.apply_async(self.save_result, args=[
-                        wav_pred, mel_pred, 'P', item_name, text, gen_dir, str_phs, mel2ph_pred, f0_gt, f0_pred]))
+                        wav_pred, mel_pred, 'P', item_name, gen_dir]))
 
                 if mel_gt is not None and hparams['save_gt']:
                     wav_gt = self.vocoder.spec2wav(mel_gt, f0=f0_gt)
                     self.saving_results_futures.append(
                         self.saving_result_pool.apply_async(self.save_result, args=[
-                            wav_gt, mel_gt, 'G', item_name, text, gen_dir, str_phs, mel2ph_gt, f0_gt, f0_pred]))
+                            wav_gt, mel_gt, 'G', item_name, gen_dir]))
                     if hparams['save_f0']:
                         import matplotlib.pyplot as plt
                         f0_pred_ = f0_pred
@@ -408,13 +445,9 @@ class FastSpeech2Task(TtsTask):
         return {}
 
     @staticmethod
-    def save_result(wav_out, mel, prefix, item_name, text, gen_dir, str_phs=None, mel2ph=None, gt_f0=None,
-                    pred_f0=None):
+    def save_result(wav_out, mel, prefix, item_name, gen_dir):
         item_name = item_name.replace('/', '-')
         base_fn = f'[{item_name}][{prefix}]'
-
-        if text is not None:
-            base_fn += text
         base_fn += ('-' + hparams['exp_name'])
         np.save(os.path.join(hparams['work_dir'], f'{prefix}_mels_npy', item_name), mel)
         audio.save_wav(wav_out, f'{gen_dir}/wavs/{base_fn}.wav', 24000,  # hparams['audio_sample_rate'],
@@ -427,16 +460,6 @@ class FastSpeech2Task(TtsTask):
         f0, _ = get_pitch_parselmouth(wav_out, mel, hparams)
         f0 = (f0 - 100) / (800 - 100) * 80 * (f0 > 0)
         plt.plot(f0, c='white', linewidth=1, alpha=0.6)
-        if mel2ph is not None and str_phs is not None:
-            decoded_txt = str_phs.split(" ")
-            dur = mel2ph_to_dur(torch.LongTensor(mel2ph)[None, :], len(decoded_txt))[0].numpy()
-            dur = [0] + list(np.cumsum(dur))
-            for i in range(len(dur) - 1):
-                shift = (i % 20) + 1
-                plt.text(dur[i], shift, decoded_txt[i])
-                plt.hlines(shift, dur[i], dur[i + 1], colors='b' if decoded_txt[i] != '|' else 'black')
-                plt.vlines(dur[i], 0, 5, colors='b' if decoded_txt[i] != '|' else 'black',
-                           alpha=1, linewidth=1)
         plt.tight_layout()
         plt.savefig(f'{gen_dir}/plot/{base_fn}.png', format='png', dpi=1000)
         plt.close(fig)
@@ -451,6 +474,9 @@ class FastSpeech2Task(TtsTask):
         f0 = torch.gather(f0, 1, mel2ph)  # [B, T_mel]
         return f0
 
-
-if __name__ == '__main__':
-    FastSpeech2Task.start()
+    @staticmethod
+    def weights_nonzero_speech(target):
+        # target : B x T x mel
+        # Assign weight 1.0 to all labels except for padding (id=0).
+        dim = target.size(-1)
+        return target.abs().sum(-1, keepdim=True).ne(0).float().repeat(1, 1, dim)

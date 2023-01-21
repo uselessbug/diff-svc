@@ -1,28 +1,28 @@
 import json
+import logging
 import os
 import random
+from copy import deepcopy
 
 import numpy as np
 import yaml
 from resemblyzer import VoiceEncoder
 from tqdm import tqdm
 
-from infer_tools.data_static import static_time
-from network.vocoders.nsf_hifigan import NsfHifiGAN
-from preprocessing.data_gen_utils import get_pitch_parselmouth, get_pitch_crepe
-from preprocessing.hubertinfer import Hubertencoder
-from utils.hparams import set_hparams, hparams
+from infer_tools.f0_static import static_f0_time
+from modules.vocoders.nsf_hifigan import NsfHifiGAN
+from preprocessing.hubertinfer import HubertEncoder
+from preprocessing.process_pipeline import File2Batch
+from preprocessing.process_pipeline import get_pitch_parselmouth, get_pitch_crepe
+from utils.hparams import hparams
+from utils.hparams import set_hparams
 from utils.indexed_datasets import IndexedDatasetBuilder
 
 os.environ["OMP_NUM_THREADS"] = "1"
 BASE_ITEM_ATTRIBUTES = ['wav_fn', 'spk_id']
 
 
-class BinarizationError(Exception):
-    pass
-
-
-class BaseBinarizer:
+class SvcBinarizer:
     '''
         Base class for data processing.
         1. *process* and *process_data_split*:
@@ -47,7 +47,7 @@ class BaseBinarizer:
     def __init__(self, data_dir=None, item_attributes=None):
         self.spk_map = None
         self.vocoder = NsfHifiGAN()
-        self.phone_encoder = Hubertencoder(pt_path=hparams['hubert_path'])
+        self.phone_encoder = HubertEncoder(pt_path=hparams['hubert_path'])
         if item_attributes is None:
             item_attributes = BASE_ITEM_ATTRIBUTES
         if data_dir is None:
@@ -87,21 +87,59 @@ class BaseBinarizer:
             self.get_pitch_algorithm = get_pitch_crepe
         else:
             self.get_pitch_algorithm = get_pitch_parselmouth
+        print('spkers: ', set(self.speakers))
+        self._train_item_names, self._test_item_names = self.split_train_test_set(self.item_names)
 
-    def load_meta_data(self):
-        raise NotImplementedError
+    @staticmethod
+    def split_train_test_set(item_names):
+        auto_test = item_names[-5:]
+        item_names = set(deepcopy(item_names))
+        if hparams['choose_test_manually']:
+            prefixes = set([str(pr) for pr in hparams['test_prefixes']])
+            test_item_names = set()
+            # Add prefixes that specified speaker index and matches exactly item name to test set
+            for prefix in deepcopy(prefixes):
+                if prefix in item_names:
+                    test_item_names.add(prefix)
+                    prefixes.remove(prefix)
+            # Add prefixes that exactly matches item name without speaker id to test set
+            for prefix in deepcopy(prefixes):
+                for name in item_names:
+                    if name.split(':')[-1] == prefix:
+                        test_item_names.add(name)
+                        prefixes.remove(prefix)
+            # Add names with one of the remaining prefixes to test set
+            for prefix in deepcopy(prefixes):
+                for name in item_names:
+                    if name.startswith(prefix):
+                        test_item_names.add(name)
+                        prefixes.remove(prefix)
+            for prefix in prefixes:
+                for name in item_names:
+                    if name.split(':')[-1].startswith(prefix):
+                        test_item_names.add(name)
+            test_item_names = sorted(list(test_item_names))
+        else:
+            test_item_names = auto_test
+        train_item_names = [x for x in item_names if x not in set(test_item_names)]
+        logging.info("train {}".format(len(train_item_names)))
+        logging.info("test {}".format(len(test_item_names)))
+        return train_item_names, test_item_names
 
     @property
     def train_item_names(self):
-        raise NotImplementedError
+        return self._train_item_names
 
     @property
     def valid_item_names(self):
-        raise NotImplementedError
+        return self._test_item_names
 
     @property
     def test_item_names(self):
-        raise NotImplementedError
+        return self._test_item_names
+
+    def load_meta_data(self, raw_data_dir, ds_id):
+        self.items.update(File2Batch.file2temporary_dict(raw_data_dir, ds_id))
 
     @staticmethod
     def build_spk_map():
@@ -163,7 +201,7 @@ class BaseBinarizer:
         if prefix == 'train':
             spec_max = np.max(spec_max, 0)
             spec_min = np.min(spec_min, 0)
-            pitch_time = static_time(f0_dict)
+            pitch_time = static_f0_time(f0_dict)
             with open(hparams['config_path'], encoding='utf-8') as f:
                 _hparams = yaml.safe_load(f)
                 _hparams['spec_max'] = spec_max.tolist()
@@ -183,4 +221,4 @@ class BaseBinarizer:
 
 if __name__ == "__main__":
     set_hparams()
-    BaseBinarizer().process()
+    SvcBinarizer().process()

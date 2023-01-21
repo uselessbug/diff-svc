@@ -10,8 +10,8 @@ import yaml
 from pylab import xticks, np
 from tqdm import tqdm
 
-from network.vocoders.nsf_hifigan import NsfHifiGAN
-from preprocessing.data_gen_utils import get_pitch_parselmouth, get_pitch_crepe
+from modules.vocoders.nsf_hifigan import NsfHifiGAN
+from preprocessing.process_pipeline import get_pitch_parselmouth, get_pitch_crepe
 from utils.hparams import set_hparams, hparams
 
 head_list = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
@@ -58,7 +58,7 @@ def collect_f0(f0):
     return pitch_num
 
 
-def static_time(f0):
+def static_f0_time(f0):
     if isinstance(f0, dict):
         pitch_num = merge_f0_dict({k: collect_f0(v) for k, v in f0.items()}.values())
     else:
@@ -94,7 +94,7 @@ if __name__ == "__main__":
         for wav_path in wav_paths:
             f0_dict[wav_path] = get_f0(wav_path, crepe=False)
             p_bar.update(1)
-    pitch_time = static_time(f0_dict)
+    pitch_time = static_f0_time(f0_dict)
     total_time = round(sum(pitch_time.values()), 2)
     pitch_time["total_time"] = total_time
     print(f"total time: {total_time}s")

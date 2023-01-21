@@ -229,7 +229,8 @@ class BaseTask(nn.Module):
         else:
             trainer.test(task)
 
-    def configure_ddp(self, model, device_ids):
+    @staticmethod
+    def configure_ddp(model, device_ids):
         model = DDP(
             model,
             device_ids=device_ids,
@@ -242,6 +243,7 @@ class BaseTask(nn.Module):
         np.random.seed(hparams['seed'])
         return model
 
+    @staticmethod
     def training_end(self, *args, **kwargs):
         return None
 
@@ -306,7 +308,8 @@ class BaseTask(nn.Module):
     def on_after_backward(self):
         pass
 
-    def backward(self, loss, optimizer):
+    @staticmethod
+    def backward(loss, optimizer):
         loss.backward()
 
     def grad_norm(self, norm_type):

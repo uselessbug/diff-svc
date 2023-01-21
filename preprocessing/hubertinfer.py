@@ -6,13 +6,13 @@ import numpy as np
 import onnxruntime as ort
 import torch
 
-from network.hubert.cn_hubert import load_cn_model, get_cn_hubert_units
-from network.hubert.hubert_model import hubert_soft, get_units
-from network.hubert.hubert_onnx import get_onnx_units
+from modules.hubert.cn_hubert import load_cn_model, get_cn_hubert_units
+from modules.hubert.hubert_model import hubert_soft, get_units
+from modules.hubert.hubert_onnx import get_onnx_units
 from utils.hparams import hparams
 
 
-class Hubertencoder():
+class HubertEncoder:
     def __init__(self, pt_path='checkpoints/hubert/hubert_soft.pt', hubert_mode='', onnx=False):
         self.hubert_mode = hubert_mode
         self.onnx = onnx

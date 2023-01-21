@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from torch import nn
 from tqdm import tqdm
 
-from modules.fastspeech.fs2 import FastSpeech2
+from modules.encoder import SvcEncoder
 from training.train_pipeline import Batch2Loss
 from utils.hparams import hparams
 
@@ -70,7 +70,7 @@ class GaussianDiffusion(nn.Module):
                  spec_max=None):
         super().__init__()
         self.denoise_fn = denoise_fn
-        self.fs2 = FastSpeech2(phone_encoder, out_dims)
+        self.fs2 = SvcEncoder(phone_encoder, out_dims)
         self.mel_bins = out_dims
 
         if exists(betas):
@@ -171,7 +171,7 @@ class GaussianDiffusion(nn.Module):
             a_t_sq, a_prev_sq = a_t.sqrt(), a_prev.sqrt()
 
             x_delta = (a_prev - a_t) * ((1 / (a_t_sq * (a_t_sq + a_prev_sq))) * x - 1 / (
-                        a_t_sq * (((1 - a_prev) * a_t).sqrt() + ((1 - a_t) * a_prev).sqrt())) * noise_t)
+                    a_t_sq * (((1 - a_prev) * a_t).sqrt() + ((1 - a_t) * a_prev).sqrt())) * noise_t)
             x_pred = x + x_delta
 
             return x_pred

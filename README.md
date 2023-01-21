@@ -2,7 +2,7 @@
 
 Singing Voice Conversion via diffusion model
 
-## 本仓库为diff-svc fork修改版，新增辅助脚本、新hubert等，请自行评估并承担风险
+## 本仓库为diff-svc fork重构版，新增辅助脚本、新hubert等，请自行评估并承担风险
 
 > 建议使用稳定版：[diff-svc](https://github.com/prophesier/diff-svc) \
 > 项目教程在doc文件夹下，此魔改版问题请勿在原项目频道、discord等询问。 \
@@ -10,6 +10,7 @@ Singing Voice Conversion via diffusion model
 
 ## updates:
 
+> 2023.01.20 重构目录，精简代码，去除多层继承@小狼 \
 > 2023.01.18 配置文件改为级联，仅需修改config_nsf、config_ms（二选一）即可预处理@小狼 \
 > 2023.01.16 增加多说话人支持(config_ms.yaml)，预处理代码参考diffsinger修改@小狼 \
 > 2023.01.09 \

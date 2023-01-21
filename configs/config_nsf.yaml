@@ -1,8 +1,8 @@
 base_config:
-- training/base.yaml
+- configs/base.yaml
 binary_data_dir: data/binary/testfox
 choose_test_manually: false
-config_path: training/config_nsf.yaml
+config_path: configs/config_nsf.yaml
 datasets:
 - testfox
 decay_steps: 40000

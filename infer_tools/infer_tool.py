@@ -10,14 +10,12 @@ import soundfile
 import torch
 
 import utils
-from infer_tools.data_static import compare_pitch, static_time
-from network.diff.candidate_decoder import FFT
-from network.diff.diffusion import GaussianDiffusion
-from network.diff.net import DiffNet
-from network.vocoders.nsf_hifigan import NsfHifiGAN
-from preprocessing.data_gen_utils import get_pitch_parselmouth
-from preprocessing.hubertinfer import Hubertencoder
-from preprocessing.process_pipeline import File2Batch
+from infer_tools.f0_static import compare_pitch, static_f0_time
+from modules.diff.diffusion import GaussianDiffusion
+from modules.diff.net import DiffNet
+from modules.vocoders.nsf_hifigan import NsfHifiGAN
+from preprocessing.hubertinfer import HubertEncoder
+from preprocessing.process_pipeline import File2Batch, get_pitch_parselmouth
 from utils.hparams import hparams, set_hparams
 from utils.pitch_utils import denorm_f0, norm_interp_f0
 
@@ -67,7 +65,6 @@ class Svc:
         self.project_name = project_name
         self.DIFF_DECODERS = {
             'wavenet': lambda hp: DiffNet(hp['audio_num_mel_bins']),
-            'fft': lambda hp: FFT(hp['hidden_size'], hp['dec_layers'], hp['dec_ffn_kernel_size'], hp['num_heads']),
         }
 
         self.model_path = model_path
@@ -78,7 +75,7 @@ class Svc:
 
         self.mel_bins = hparams['audio_num_mel_bins']
         hparams['hubert_gpu'] = hubert_gpu
-        self.hubert = Hubertencoder(hparams['hubert_path'], onnx=onnx)
+        self.hubert = HubertEncoder(hparams['hubert_path'], onnx=onnx)
         self.model = GaussianDiffusion(
             phone_encoder=self.hubert,
             out_dims=self.mel_bins, denoise_fn=self.DIFF_DECODERS[hparams['diff_decoder_type']](hparams),
@@ -167,7 +164,7 @@ class Svc:
             f0_static = json.loads(hparams['f0_static'])
             wav, mel = self.vocoder.wav2spec(wav_path)
             input_f0 = get_pitch_parselmouth(wav, mel, hparams)[0]
-            pitch_time_temp = static_time(input_f0)
+            pitch_time_temp = static_f0_time(input_f0)
             eval_dict = {}
             for trans_key in range(-12, 12):
                 eval_dict[trans_key] = compare_pitch(f0_static, pitch_time_temp, trans_key=trans_key)

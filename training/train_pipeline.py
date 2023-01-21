@@ -205,7 +205,7 @@ class Batch2Loss:
             *decoder_inp* ~= *decoder_inp* + embeddings for spk, pitch, energy
         '''
         ret['decoder_inp'] = decoder_inp = (
-                                                       decoder_inp + pitch_embedding + energy_embedding + spk_embed) * tgt_nonpadding
+                                                   decoder_inp + pitch_embedding + energy_embedding + spk_embed) * tgt_nonpadding
         return decoder_inp
 
     @staticmethod
