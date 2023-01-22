@@ -12,7 +12,7 @@ from utils.hparams import hparams
 
 def run_clip(raw_audio_path, svc_model, key, acc, use_crepe, spk_id=0, auto_key=False, out_path=None, slice_db=-40,
              **kwargs):
-    print(f'code version:2023-01-20')
+    print(f'code version:2023-01-22')
 
     clean_name = Path(raw_audio_path).name.split(".")[0]
     infer_tool.format_wav(raw_audio_path)
@@ -61,7 +61,7 @@ if __name__ == '__main__':
     spk_id = 0
     # 自适应变调（仅支持单人模型）
     auto_key = False
-    trans = [9]  # 音高调整，支持正负（半音），数量与上一行对应，不足的自动按第一个移调参数补齐
+    trans = [0]  # 音高调整，支持正负（半音），数量与上一行对应，不足的自动按第一个移调参数补齐
     # 加速倍数
     accelerate = 10
     hubert_gpu = True

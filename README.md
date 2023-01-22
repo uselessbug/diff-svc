@@ -59,23 +59,23 @@ Singing Voice Conversion via diffusion model
 
 ## 推理/inference：
 
-> 查看./inference.ipynb
+> infer.py
 
 ## 预处理/preprocessing:
 
 ```
 export PYTHONPATH=.
-CUDA_VISIBLE_DEVICES=0 python preprocessing/binarize.py --config training/config.yaml
+CUDA_VISIBLE_DEVICES=0 python training/svc_task.py --config configs/config_nsf.yaml
 ```
 
 ## 训练/training:
 
 ```
-CUDA_VISIBLE_DEVICES=0 python run.py --config training/config.yaml --exp_name [your project name] --reset 
+CUDA_VISIBLE_DEVICES=0 python run.py --config configs/config_nsf.yaml --exp_name [your project name] --reset 
 ```
 
-> 详细训练过程和各种参数介绍请查看[推理与训练说明](./doc/train_and_inference.markdown)\
-> 中文hubert与特化教程[特化教程](./doc/advanced_skills.markdown)\
+> 详细训练过程和各种参数介绍请查看[推理与训练说明](./doc/train_and_inference.markdown) \
+> 中文hubert与特化教程[特化教程](./doc/advanced_skills.markdown) \
 
 ## Acknowledgements
 
