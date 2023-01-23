@@ -4,24 +4,13 @@
 
 ## 0.环境配置
 
-> 注意:requirements文件已更新，目前分为3个版本，可自行选择使用。\
-
-1. requirements.txt 是此仓库测试的原始完整环境，Torch1.12.1+cu113,可选择直接pip 或删除其中与pytorch有关的项目(
-   torch/torchvision)后再pip，并使用自己的torch环境
-
 ```
 pip install -r requirements.txt
 ```
 
-> 2. (推荐)requirements_short.txt 是上述环境的手动整理版，不含torch本体，也可以直接
-
-```
-pip install -r requirements_short.txt
-```
-
 ## 1.推理
 
-> 使用根目录下的inference.ipynb进行推理或使用经过作者适配的@小狼的infer.py\
+> 使用根目录下的infer.py\
 > 在第一个block中修改如下参数：
 
 ```
@@ -45,7 +34,7 @@ hubert_gpu=True
 ### 可调节参数：
 
 ```
-wav_fn='xxx.wav'#传入音频的路径，默认在项目根目录中
+file_names=["逍遥仙","xxx"]#传入音频的路径，默认在文件夹raw中
 
 use_crepe=True 
 #crepe是一个F0算法，效果好但速度慢，改成False会使用效果稍逊于crepe但较快的parselmouth算法
@@ -59,19 +48,8 @@ pndm_speedup=20
 key=0
 #变调参数，默认为0(不是1!!)，将源音频的音高升高key个半音后合成，如男声转女生，可填入8或者12等(12就是升高一整个8度)
 
-use_gt_mel=False
-#这个选项类似于AI画图的图生图功能，如果打开，产生的音频将是输入声音与目标说话人声音的混合，混合比例由下一个参数确定
-注意!!!：这个参数如果改成True，请确保key填成0，不支持变调
-
-add_noise_step=500
-#与上个参数有关，控制两种声音的比例，填入1是完全的源声线，填入1000是完全的目标声线，能听出来是两者均等混合的数值大约在300附近(并不是线性的，另外这个参数如果调的很小，可以把pndm加速倍率调低，增加合成质量)
-
 wav_gen='yyy.wav'#输出音频的路径，默认在项目根目录中，可通过改变扩展名更改保存文件类型
 ```
-
-如果使用infer.py，修改方式类似，需要修改__name__=='__main__'中的部分，然后在根目录中执行\
-python infer.py\
-这种方式需要将原音频放入raw中并在results中查找结果
 
 ## 2.数据预处理与训练
 
@@ -79,11 +57,12 @@ python infer.py\
 
 > 目前支持wav格式和ogg格式的音频数据，采样率最好高于24kHz，程序会自动处理采样率和声道问题。采样率不可低于16kHz（一般不会的）\
 > 音频需要切片为5-15s为宜的短音频，长度没有具体要求，但不宜过长过短。音频需要为纯目标人干声，不可以有背景音乐和其他人声音，最好也不要有过重的混响等。若经过去伴奏等处理，请尽量保证处理后的音频质量。\
-> 目前仅支持单人训练，总时长尽量保证在3h或以上，不需要额外任何标注，将音频文件放在下述raw_data_dir下即可，这个目录下的结构可以自由定义，程序会自主找到所需文件。
+> 单人训练复制config_nsf.yaml修改，总时长尽量保证在3h或以上，不需要额外任何标注。
 
 ### 2.2 修改超参数配置
 
-> 首先请备份一份config.yaml（training文件夹下），然后修改它\
+> 首先请备份一份config_nsf.yaml（configs文件夹下），然后修改它\
+> 多人训练复制config_ms.yaml修改 \
 > 可能会用到的参数如下(以工程名为nyaru为例):
 
 ```
@@ -93,7 +72,7 @@ K_step: 1000
 binary_data_dir: data/binary/nyaru
 预处理后数据的存放地址:需要将后缀改成工程名字
 
-config_path: training/config.yaml
+config_path: configs/config_nsf.yaml
 你要使用的这份yaml自身的地址，由于预处理过程中会写入数据，所以这个地址务必修改成将要存放这份yaml文件的完整路径
 
 choose_test_manually: false
@@ -110,18 +89,18 @@ test_prefixes:
 endless_ds:False
 如果你的数据集过小，每个epoch时间很短，请将此项打开，将把正常的1000epoch作为一个epoch计算
 
-hubert_path: checkpoints/hubert/hubert.pt
+hubert_path: checkpoints/hubert/hubert_soft.pt
 hubert模型的存放地址，确保这个路径是对的，一般解压checkpoints包之后就是这个路径不需要改,现已使用torch版本推理
 hubert_gpu:True
 是否在预处理时使用gpu运行hubert(模型的一个模块)，关闭后使用cpu，但耗时会显著增加。另外模型训练完推理时hubert是否用gpu是在inference中单独控制的，不受此处影响。目前hubert改为torch版后已经可以做到在1060 6G显存gpu上进行预处理，与直接推理1分钟内的音频不超出显存限制，一般不需要关了。
 
 lr: 0.0008
-#初始的学习率:这个数字对应于88的batchsize，如果batchsize更小，可以调低这个数值一些
+#初始的学习率:这个数字对应于88的batchsize(80g显存)，如果batchsize更小，可以调低这个数值一些
 
 decay_steps: 20000
 每20000步学习率衰减为原来的一半，如果batchsize比较小，请调大这个数值
 
-#对于30-40左右的batchsize，推荐lr=0.0004，decay_steps=40000
+#对于30-40左右的batchsize(30g显存)，推荐lr=0.0004，decay_steps=40000
 
 max_frames: 42000
 max_input_tokens: 6000
@@ -129,18 +108,12 @@ max_sentences: 88
 max_tokens: 128000
 #batchsize是由这几个参数动态算出来的，如果不太清楚具体含义，可以只改动max_sentences这个参数，填入batchsize的最大限制值，以免炸显存
 
-pe_ckpt: checkpoints/0102_xiaoma_pe/model_ckpt_steps_60000.ckpt
-#pe模型路径，确保这个文件存在，具体作用参考inference部分
-
 raw_data_dir: data/raw/nyaru
 #存放预处理前原始数据的位置，请将原始wav数据放在这个目录下，内部文件结构无所谓，会自动解构
 
 residual_channels: 384
 residual_layers: 20
 #控制核心网络规模的一组参数，越大参数越多炼的越慢，但效果不一定会变好，大一点的数据集可以把第一个改成512。这个可以自行实验效果，不过不了解的话尽量不动。
-
-speaker_id: nyaru
-#训练的说话人名字，目前只支持单说话人，请在这里填写（只是观赏作用，没有实际意义的参数）
 
 use_crepe: true
 #在数据预处理中使用crepe提取F0,追求效果请打开，追求速度可以关闭
@@ -152,7 +125,7 @@ vocoder_ckpt:checkpoints/nsf_hifigan/model
 #对应声码器的文件名, 注意不要填错
 
 work_dir: checkpoints/nyaru
-#修改后缀为工程名(也可以删掉或完全留空自动生成，但别乱填)
+#修改后缀为工程名
 ```
 
 > 其他的参数如果你不知道它是做什么的，请不要修改，即使你看着名称可能以为你知道它是做什么的。
@@ -165,19 +138,18 @@ work_dir: checkpoints/nyaru
 ```
 set PYTHONPATH=.
 set CUDA_VISIBLE_DEVICES=0 
-python preprocessing/binarize.py --config training/config.yaml
+python preprocessing\svc_binarizer.py --config configs/config_nsf.yaml
 ```
 
 #linux
 
 ```
 export PYTHONPATH=.
-CUDA_VISIBLE_DEVICES=0 python preprocessing/binarize.py --config training/config.yaml
+CUDA_VISIBLE_DEVICES=0 python preprocessing\svc_binarizer.py --config configs/config_nsf.yaml
 ```
 
-对于预处理，@小狼准备了一份可以分段处理hubert和其他特征的代码，如果正常处理显存不足，可以先python
-./network/hubert/hubert_model.py
-然后再运行正常的指令，能够识别提前处理好的hubert特征
+对于预处理，@小狼准备了一份可以分段处理hubert和其他特征的代码，如果正常处理显存不足，可以修改后使用 \
+pre_hubert.py, 然后再运行正常的指令，能够识别提前处理好的hubert特征
 
 ### 2.4 训练
 
@@ -185,13 +157,13 @@ CUDA_VISIBLE_DEVICES=0 python preprocessing/binarize.py --config training/config
 
 ```
 set CUDA_VISIBLE_DEVICES=0 
-python run.py --config training/config.yaml --exp_name nyaru --reset  
+python run.py --config configs/config.yaml --exp_name nyaru --reset  
 ```
 
 #linux
 
 ```
-CUDA_VISIBLE_DEVICES=0 python run.py --config training/config.yaml --exp_name nyaru --reset 
+CUDA_VISIBLE_DEVICES=0 python run.py --config configs/config.yaml --exp_name nyaru --reset 
 ```
 
 > 需要将exp_name改为你的工程名，并修改config路径，请确保和预处理使用的是同一个config文件\

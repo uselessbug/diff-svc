@@ -65,7 +65,7 @@ Singing Voice Conversion via diffusion model
 
 ```
 export PYTHONPATH=.
-CUDA_VISIBLE_DEVICES=0 python training/svc_task.py --config configs/config_nsf.yaml
+CUDA_VISIBLE_DEVICES=0 python preprocessing\svc_binarizer.py --config configs/config_nsf.yaml
 ```
 
 ## 训练/training:

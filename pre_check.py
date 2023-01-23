@@ -107,12 +107,12 @@ if __name__ == '__main__':
         # 调用try函数
         try_except()
     elif f == 1:
-        path_list = scan("./training")
+        path_list = scan("./configs")
         a = input("请输入选项:")
         project_path = path_list[int(a)]
         with open(project_path, "r") as f:
             data = yaml.safe_load(f)
-        with open("./training/base.yaml", "r") as f:
+        with open("./configs/base.yaml", "r") as f:
             base = yaml.safe_load(f)
         test_model = {'yaml': data["config_path"], 'hubert': data["hubert_path"],
                       'raw_data_dir': data["raw_data_dir"], 'vocoder': base["vocoder_ckpt"],
@@ -147,7 +147,7 @@ if __name__ == '__main__':
                       "\r\n*====================="
                       "\r\n# linux"
                       "\r\nexport PYTHONPATH=."
-                      f"\r\nCUDA_VISIBLE_DEVICES=0 python preprocessing/binarize.py --config {yaml_path}"
+                      f"\r\nCUDA_VISIBLE_DEVICES=0 python preprocessing\svc_binarizer.py --config {yaml_path}"
                       "\r\n*=====================")
                 print("预处理完请重新运行此脚本选项1，届时提供训练命令")
     else:
