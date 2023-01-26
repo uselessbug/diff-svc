@@ -63,7 +63,7 @@ if __name__ == '__main__':
     auto_key = False
     trans = [0]  # 音高调整，支持正负（半音），数量与上一行对应，不足的自动按第一个移调参数补齐
     # 加速倍数
-    accelerate = 10
+    accelerate = 20
     hubert_gpu = True
     wav_format = 'flac'
     step = int(model_path.split("_")[-1].split(".")[0])

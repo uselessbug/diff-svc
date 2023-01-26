@@ -147,7 +147,7 @@ if __name__ == '__main__':
                       "\r\n*====================="
                       "\r\n# linux"
                       "\r\nexport PYTHONPATH=."
-                      f"\r\nCUDA_VISIBLE_DEVICES=0 python preprocessing\svc_binarizer.py --config {yaml_path}"
+                      f"\r\nCUDA_VISIBLE_DEVICES=0 python preprocessing/svc_binarizer.py --config {yaml_path}"
                       "\r\n*=====================")
                 print("预处理完请重新运行此脚本选项1，届时提供训练命令")
     else:
