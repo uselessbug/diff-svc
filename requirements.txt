@@ -4,7 +4,7 @@ torchcrepe
 matplotlib
 praat-parselmouth==0.4.1
 scikit-image
-yaml
+pyyaml
 ipython
 ipykernel
 librosa==0.8.0
