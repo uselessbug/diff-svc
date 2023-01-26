@@ -143,7 +143,7 @@ if __name__ == '__main__':
                       "\r\n# windows，**使用cmd窗口**"
                       "\r\nset PYTHONPATH=."
                       "\r\nset CUDA_VISIBLE_DEVICES=0"
-                      f"\r\npython preprocessing/binarize.py --config {yaml_path}"
+                      f"\r\npython preprocessing/svc_binarizer.py --config {yaml_path}"
                       "\r\n*====================="
                       "\r\n# linux"
                       "\r\nexport PYTHONPATH=."
