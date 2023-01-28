@@ -33,13 +33,14 @@ def run_clip(raw_audio_path, svc_model, key, acc, use_crepe, spk_id=0, auto_key=
 if __name__ == '__main__':
     # 工程文件夹名，训练时用的那个
     project_name = "fox_cn"
-    model_path = f'./checkpoints/{project_name}/clean_model_ckpt_steps_260000.ckpt'
+    model_path = f'./checkpoints/{project_name}/model_ckpt_steps_370000.ckpt'
     config_path = f'./checkpoints/{project_name}/config.yaml'
 
     # 此脚本为批量导出短音频（30s内）使用，同时生成f0、mel供diffsinger使用。
     # 支持wav文件，放在batch文件夹下，带扩展名
     wav_paths = infer_tool.get_end_file("./batch", "wav")
     trans = -6  # 音高调整，支持正负（半音）
+    spk_id = 0  # 非多人模型不改
     # 特化专用，开启此项后，仅导出变更音色的units至batch目录，其余项不输出；关闭此项则切换为对接diffsinger的套娃导出模式
     units = True
     # 自适应变调，不懂别开
