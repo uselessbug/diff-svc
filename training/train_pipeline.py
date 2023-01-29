@@ -47,18 +47,9 @@ class Batch2Loss:
 
         # encoder_out_dur denotes encoder outputs for duration predictor
         # in speech adaptation, duration predictor use old speaker embedding
-        if hparams['use_spk_embed']:
-            spk_embed_dur = spk_embed_f0 = spk_embed = spk_embed_proj(spk_embed_id)[:, None, :]
-        elif hparams['use_spk_id']:
-            if spk_embed_dur_id is None:
-                spk_embed_dur_id = spk_embed_id
-            if spk_embed_f0_id is None:
-                spk_embed_f0_id = spk_embed_id
+        if hparams['use_spk_id']:
             spk_embed = spk_embed_proj(spk_embed_id)[:, None, :]
             spk_embed_dur = spk_embed_f0 = spk_embed
-            if hparams['use_split_spk_id']:
-                spk_embed_dur = spk_embed_dur(spk_embed_dur_id)[:, None, :]
-                spk_embed_f0 = spk_embed_f0(spk_embed_f0_id)[:, None, :]
         else:
             spk_embed_dur = spk_embed_f0 = spk_embed = 0
 

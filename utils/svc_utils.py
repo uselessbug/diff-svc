@@ -81,8 +81,6 @@ class SvcDataset(torch.utils.data.Dataset):
         }
         if hparams['use_energy_embed']:
             sample['energy'] = item['energy']
-        if hparams['use_spk_embed']:
-            sample["spk_embed"] = torch.Tensor(item['spk_embed'])
         if hparams['use_spk_id']:
             sample["spk_id"] = item['spk_id']
         return sample

@@ -73,12 +73,12 @@ class Svc:
         self._ = set_hparams(config=config_name, exp_name=self.project_name, infer=True,
                              reset=True, hparams_str='', print_hparams=False)
 
-        self.mel_bins = hparams['audio_num_mel_bins']
         hparams['hubert_gpu'] = hubert_gpu
         self.hubert = HubertEncoder(hparams['hubert_path'], onnx=onnx)
         self.model = GaussianDiffusion(
             phone_encoder=self.hubert,
-            out_dims=self.mel_bins, denoise_fn=self.DIFF_DECODERS[hparams['diff_decoder_type']](hparams),
+            out_dims=hparams['audio_num_mel_bins'],
+            denoise_fn=self.DIFF_DECODERS[hparams['diff_decoder_type']](hparams),
             timesteps=hparams['timesteps'],
             K_step=hparams['K_step'],
             loss_type=hparams['diff_loss_type'],
@@ -88,7 +88,7 @@ class Svc:
         self.model.cuda()
         self.vocoder = NsfHifiGAN()
 
-    def infer(self, in_path, key, acc, spk_id=0, use_crepe=True, singer=False, **kwargs):
+    def infer(self, in_path, key, acc, spk_id=0, use_crepe=True, singer=False):
         batch = self.pre(in_path, acc, spk_id, use_crepe)
         batch['f0'] = batch['f0'] + (key / 12)
         batch['f0'][batch['f0'] > np.log2(hparams['f0_max'])] = 0
@@ -100,13 +100,12 @@ class Svc:
             if spk_embed is None:
                 spk_embed = torch.LongTensor([0])
             diff_outputs = self.model(
-                batch['hubert'].cuda(), spk_embed=spk_embed.cuda(), mel2ph=batch['mel2ph'].cuda(),
-                f0=batch['f0'].cuda(), uv=batch['uv'].cuda(), energy=energy, ref_mels=batch["mels"].cuda(), infer=True,
-                **kwargs)
+                hubert=batch['hubert'].cuda(), spk_embed_id=spk_embed.cuda(), mel2ph=batch['mel2ph'].cuda(),
+                f0=batch['f0'].cuda(), energy=energy, ref_mels=batch["mels"].cuda(), infer=True)
             return diff_outputs
 
         outputs = diff_infer()
-        batch['outputs'] = self.model.out2mel(outputs['mel_out'])
+        batch['outputs'] = outputs['mel_out']
         batch['mel2ph_pred'] = outputs['mel2ph']
         batch['f0_gt'] = denorm_f0(batch['f0'], batch['uv'], hparams)
         batch['f0_pred'] = outputs.get('f0_denorm')

@@ -11,14 +11,11 @@ from infer_tools.trans_key import trans_opencpop
 from utils.hparams import hparams
 
 
-def run_clip(raw_audio_path, svc_model, key, acc, use_crepe, spk_id=0, auto_key=False, use_gt_mel=False,
-             add_noise_step=500,
-             units_mode=False):
+def run_clip(raw_audio_path, svc_model, key, acc, use_crepe, spk_id=0, auto_key=False, units_mode=False):
     infer_tool.format_wav(raw_audio_path)
     key = svc_model.evaluate_key(raw_audio_path, key, auto_key)
     _f0_tst, _f0_pred, _audio = svc_model.infer(raw_audio_path, key=key, acc=acc, use_crepe=use_crepe, spk_id=spk_id,
-                                                singer=not units_mode, use_gt_mel=use_gt_mel,
-                                                add_noise_step=add_noise_step)
+                                                singer=not units_mode)
     if units_mode:
         out_path = io.BytesIO()
         soundfile.write(out_path, _audio, hparams["audio_sample_rate"], format='wav')

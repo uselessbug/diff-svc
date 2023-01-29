@@ -167,12 +167,10 @@ class SvcTask(BaseTask):
         target = sample['mels']  # [B, T_s, 80]
         mel2ph = sample['mel2ph']  # [B, T_s]
         f0 = sample['f0']
-        uv = sample['uv']
         energy = sample.get('energy')
 
         spk_embed = sample.get('spk_embed') if not hparams['use_spk_id'] else sample.get('spk_ids')
-        output = model(hubert, mel2ph=mel2ph, spk_embed=spk_embed,
-                       ref_mels=target, f0=f0, uv=uv, energy=energy, infer=infer)
+        output = model(hubert, mel2ph=mel2ph, spk_embed_id=spk_embed, ref_mels=target, f0=f0, energy=energy, infer=infer)
 
         losses = {}
         if 'diff_loss' in output:
@@ -216,8 +214,7 @@ class SvcTask(BaseTask):
         outputs = utils.tensors_to_scalars(outputs)
         if batch_idx < hparams['num_valid_plots']:
             model_out = self.model(
-                hubert, spk_embed=spk_embed, mel2ph=mel2ph, f0=sample['f0'], uv=sample['uv'], energy=energy,
-                ref_mels=None, infer=True
+                hubert, spk_embed_id=spk_embed, mel2ph=mel2ph, f0=sample['f0'], energy=energy, ref_mels=None, infer=True
             )
 
             gt_f0 = denorm_f0(sample['f0'], sample['uv'], hparams)
@@ -365,10 +362,8 @@ class SvcTask(BaseTask):
         ref_mels = None
         mel2ph = sample['mel2ph']
         f0 = sample['f0']
-        uv = sample['uv']
-        outputs = self.model(hubert, spk_embed=spk_embed, mel2ph=mel2ph, f0=f0, uv=uv, ref_mels=ref_mels,
-                             infer=True)
-        sample['outputs'] = self.model.out2mel(outputs['mel_out'])
+        outputs = self.model(hubert, spk_embed_id=spk_embed, mel2ph=mel2ph, f0=f0, ref_mels=ref_mels, infer=True)
+        sample['outputs'] = outputs['mel_out']
         sample['mel2ph_pred'] = outputs['mel2ph']
         sample['f0'] = denorm_f0(sample['f0'], sample['uv'], hparams)
         sample['f0_pred'] = outputs.get('f0_denorm')
