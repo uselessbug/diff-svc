@@ -170,7 +170,8 @@ class SvcTask(BaseTask):
         energy = sample.get('energy')
 
         spk_embed = sample.get('spk_embed') if not hparams['use_spk_id'] else sample.get('spk_ids')
-        output = model(hubert, mel2ph=mel2ph, spk_embed_id=spk_embed, ref_mels=target, f0=f0, energy=energy, infer=infer)
+        output = model(hubert, mel2ph=mel2ph, spk_embed_id=spk_embed, ref_mels=target, f0=f0, energy=energy,
+                       infer=infer)
 
         losses = {}
         if 'diff_loss' in output:
@@ -190,10 +191,14 @@ class SvcTask(BaseTask):
         log_outputs['lr'] = self.scheduler.get_lr()[0]
         return total_loss, log_outputs
 
-    def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_idx):
+    def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_idx, use_amp, scaler):
         if optimizer is None:
             return
-        optimizer.step()
+        if use_amp:
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            optimizer.step()
         optimizer.zero_grad()
         if self.scheduler is not None:
             self.scheduler.step(self.global_step // hparams['accumulate_grad_batches'])

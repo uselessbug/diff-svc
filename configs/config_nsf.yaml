@@ -22,6 +22,7 @@ spec_min:
 - -5.0
 test_prefixes:
 - test
+use_amp: false
 use_cn_hubert: false
 use_crepe: false
 use_energy_embed: false

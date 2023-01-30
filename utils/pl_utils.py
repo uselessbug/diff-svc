@@ -1,32 +1,30 @@
-import matplotlib
-from torch.nn import DataParallel
-from torch.nn.parallel import DistributedDataParallel
-
-matplotlib.use('Agg')
+import copy
 import glob
 import itertools
-import subprocess
-import threading
-import traceback
-
-from pytorch_lightning.callbacks import GradientAccumulationScheduler
-from pytorch_lightning.callbacks import ModelCheckpoint
-
-from functools import wraps
-from torch.cuda._utils import _get_device_index
-import numpy as np
-import torch.optim
-import torch.utils.data
-import copy
 import logging
 import os
 import re
 import sys
+import threading
+import traceback
+from functools import wraps
+
+import matplotlib
+import numpy as np
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
+import torch.optim
+import torch.utils.data
 import tqdm
+from pytorch_lightning.callbacks import GradientAccumulationScheduler
+from pytorch_lightning.callbacks import ModelCheckpoint
+from torch.cuda._utils import _get_device_index
+from torch.nn import DataParallel
+from torch.nn.parallel import DistributedDataParallel
 from torch.optim.optimizer import Optimizer
+
+matplotlib.use('Agg')
 
 
 def get_a_var(obj):  # pragma: no cover
@@ -351,10 +349,9 @@ class LatestModelCheckpoint(ModelCheckpoint):
                             f' {best_filepath} as top 1')
                     self._save_model(best_filepath)
                     np.save(f'{self.filepath}/best_valid.npy', [self.best])
-    
-    def _save_model(self,path):
-        return self.save_function(path)
 
+    def _save_model(self, path):
+        return self.save_function(path)
 
 
 class BaseTrainer:
@@ -380,6 +377,7 @@ class BaseTrainer:
             weights_summary='full',
             num_sanity_val_steps=5,
             resume_from_checkpoint=None,
+            use_amp=False
     ):
         self.log_gpu_memory = log_gpu_memory
         self.gradient_clip_val = gradient_clip_val
@@ -459,6 +457,10 @@ class BaseTrainer:
         self.logger = logger
         self.logger.rank = 0
         self.row_log_interval = row_log_interval
+        self.scaler = None
+        self.use_amp = use_amp
+        if self.use_amp:
+            self.scaler = torch.cuda.amp.GradScaler()
 
     @property
     def num_gpus(self):
@@ -1482,25 +1484,29 @@ class BaseTrainer:
                 # wrap the forward step in a closure so second order methods work
                 def optimizer_closure():
                     # forward pass
-                    output = self.training_forward(
-                        split_batch, batch_idx, opt_idx, self.hiddens)
+                    with torch.cuda.amp.autocast() if self.use_amp else contextlib.suppress():
+                        output = self.training_forward(
+                            split_batch, batch_idx, opt_idx, self.hiddens)
 
-                    closure_loss = output[0]
-                    progress_bar_metrics = output[1]
-                    log_metrics = output[2]
-                    callback_metrics = output[3]
-                    self.hiddens = output[4]
-                    if closure_loss is None:
-                        return None
+                        closure_loss = output[0]
+                        progress_bar_metrics = output[1]
+                        log_metrics = output[2]
+                        callback_metrics = output[3]
+                        self.hiddens = output[4]
+                        if closure_loss is None:
+                            return None
 
-                    # accumulate loss
-                    # (if accumulate_grad_batches = 1 no effect)
-                    closure_loss = closure_loss / self.accumulate_grad_batches
+                        # accumulate loss
+                        # (if accumulate_grad_batches = 1 no effect)
+                        closure_loss = closure_loss / self.accumulate_grad_batches
 
                     # backward pass
                     model_ref = self.get_model()
                     if closure_loss.requires_grad:
-                        model_ref.backward(closure_loss, optimizer)
+                        if self.use_amp:
+                            self.scaler.scale(closure_loss).backward()
+                        else:
+                            model_ref.backward(closure_loss, optimizer)
 
                     # track metrics for callbacks
                     all_callback_metrics.append(callback_metrics)
@@ -1539,12 +1545,14 @@ class BaseTrainer:
                                 self.track_grad_norm)
 
                     # clip gradients
+                    if self.use_amp:
+                        self.scaler.unscale_(optimizer)
                     self.clip_gradients()
 
                     # calls .step(), .zero_grad()
                     # override function to modify this behavior
                     model = self.get_model()
-                    model.optimizer_step(self.current_epoch, batch_idx, optimizer, opt_idx)
+                    model.optimizer_step(self.current_epoch, batch_idx, optimizer, opt_idx, self.use_amp, self.scaler)
 
                     # calculate running loss for display
                     self.running_loss.append(self.batch_loss_value)

@@ -216,7 +216,8 @@ class BaseTask(nn.Module):
             max_updates=hparams['max_updates'],
             num_sanity_val_steps=hparams['num_sanity_val_steps'] if not hparams[
                 'validate'] else 10000,
-            accumulate_grad_batches=hparams['accumulate_grad_batches'])
+            accumulate_grad_batches=hparams['accumulate_grad_batches'],
+            use_amp=hparams['use_amp'])
         if not hparams['infer']:  # train
             # Copy spk_map.json to work dir
             spk_map = os.path.join(work_dir, 'spk_map.json')
