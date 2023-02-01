@@ -90,4 +90,9 @@ the development and training process. \
 > Note: This project has no connection with the paper of the same name [DiffSVC](https://arxiv.org/abs/2105.13871),
 > please
 > do not confuse them!
-> 音频切片参考[audio-slicer](https://github.com/openvpi/audio-slicer)
+
+## Tools
+
+音频切片参考 [audio-slicer](https://github.com/openvpi/audio-slicer)
+
+Audio Slice Reference [audio-slicer](https://github.com/openvpi/audio-slicer)
