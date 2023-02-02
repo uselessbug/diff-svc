@@ -77,7 +77,7 @@ CUDA_VISIBLE_DEVICES=0 python run.py --config configs/config_nsf.yaml --exp_name
 > 详细训练过程和各种参数介绍请查看[推理与训练说明](./doc/train_and_inference.markdown) \
 > 中文hubert与特化教程[特化教程](./doc/advanced_skills.markdown) \
 
-## Acknowledgements
+## 学术/Acknowledgements
 
 项目基于[diffsinger](https://github.com/MoonInTheRiver/DiffSinger)、[diffsinger(openvpi维护版)](https://github.com/openvpi/DiffSinger)、[soft-vc](https://github.com/bshall/soft-vc)
 开发.\
@@ -91,7 +91,7 @@ the development and training process. \
 > please
 > do not confuse them!
 
-## Tools
+## 工具/Tools
 
 音频切片参考 [audio-slicer](https://github.com/openvpi/audio-slicer)
 
