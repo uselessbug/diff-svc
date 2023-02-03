@@ -139,7 +139,7 @@ use_uv: false
 use_var_enc: false
 valid_num: 0
 valid_set_name: valid
-vocoder: moudles.vocoders.nsf_hifigan.NsfHifiGAN
+vocoder: modules.vocoders.nsf_hifigan.NsfHifiGAN
 vocoder_ckpt: checkpoints/nsf_hifigan/model
 warmup_updates: 2000
 wav2spec_eps: 1e-6
