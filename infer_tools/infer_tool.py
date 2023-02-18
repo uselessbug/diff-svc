@@ -1,5 +1,6 @@
 import json
 import os
+import pathlib
 import time
 from io import BytesIO
 from pathlib import Path
@@ -172,8 +173,8 @@ class Svc:
             if auto_key:
                 print(f"自动变调已启用，您的输入key被{sort_key[0]}key覆盖，控制参数为auto_key")
                 return sort_key[0]
-        else:
-            print("config缺少f0_staic，无法使用自动变调，可通过infer_tools/data_static添加")
+        elif not os.path.exists(f"{pathlib.Path(self.model_path).parent}/spk_map.json"):
+            print("config缺少f0_staic，无法使用自动变调，可通过infer_tools/data_static添加（仅单人模型支持）")
         return key
 
 

@@ -2,9 +2,9 @@
 
 Singing Voice Conversion via diffusion model
 
-## 本仓库为 diff-svc fork 重构版，新增辅助脚本、新 hubert 等，请自行评估并承担风险
+## 本仓库为 diff-svc fork 重构版，新增多说话人、辅助脚本、新 hubert 等，请自行评估并承担风险
 
-> 建议使用稳定版：[Diff-SVC](https://github.com/prophesier/diff-svc) 
+> 建议使用稳定版：[Diff-SVC](https://github.com/prophesier/diff-svc)
 > 
 > 项目教程在 doc 文件夹下，此魔改版问题请勿在原项目频道、discord 等询问。 
 > 
@@ -12,6 +12,10 @@ Singing Voice Conversion via diffusion model
 
 ## 更新日志 /Changes Log
 
+> 2023.02.18
+> 
+> 更新config参数，增加flask_api多人模型；取消midi a模式diffsinger套娃支持 @小狼
+> 
 > 2023.01.20
 > 
 > 重构目录，精简代码，去除多层继承 @小狼 

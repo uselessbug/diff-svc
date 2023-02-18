@@ -10,13 +10,13 @@ decay_steps: 40000
 hubert_path: checkpoints/hubert/hubert_soft.pt
 lr: 0.0005
 max_sentences: 32
-max_tokens: 10000
+max_tokens: 80000
 num_ckpt_keep: 10
 num_spk: 2
 raw_data_dir:
 - data/raw/testfox
 - data/raw/jishuang
-residual_channels: 384
+residual_channels: 512
 residual_layers: 20
 speakers:
 - testfox

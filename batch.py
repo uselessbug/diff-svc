@@ -7,7 +7,6 @@ import soundfile
 
 from infer_tools import infer_tool
 from infer_tools.infer_tool import Svc
-from infer_tools.trans_key import trans_opencpop
 from utils.hparams import hparams
 
 
@@ -44,10 +43,6 @@ if __name__ == '__main__':
     auto_key = False
     # 加速倍数
     accelerate = 10
-
-    # 仅支持opencpop标注文件，配合上方移调；使用时自行修改文件名、输出名（带txt后缀）
-    if not units:
-        trans_opencpop("transcriptions.txt", "res.txt", trans)
 
     # 下面不动
     os.makedirs("./singer_data", exist_ok=True)

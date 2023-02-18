@@ -27,7 +27,8 @@ def voice_change_model():
     # http获得wav文件并转换
     input_wav_path = io.BytesIO(wave_file.read())
     # 模型推理
-    _f0_tst, _f0_pred, _audio = svc_model.infer(input_wav_path, key=f_pitch_change, acc=accelerate, use_crepe=False)
+    _f0_tst, _f0_pred, _audio = svc_model.infer(input_wav_path, spk_id=spk_id, key=f_pitch_change, acc=accelerate,
+                                                use_crepe=False)
     tar_audio = librosa.resample(_audio, hparams["audio_sample_rate"], daw_sample)
     # 返回音频
     out_wav_path = io.BytesIO()
@@ -42,6 +43,7 @@ if __name__ == '__main__':
     model_path = f'./checkpoints/{project_name}/clean_model_ckpt_steps_120000.ckpt'
     config_path = f'./checkpoints/{project_name}/config.yaml'
 
+    spk_id = 0
     # 加速倍数
     accelerate = 50
     hubert_gpu = True
