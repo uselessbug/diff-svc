@@ -26,7 +26,7 @@ def voice_change_model():
     speak_id = int(request_form.get("sSpeakId", 0))
     if enable_spk_id_cover:
         speak_id = spk_id
-    print("说话人:"str(int_speak_Id))
+    print("说话人:" + str(int_speak_Id))
     # DAW所需的采样率
     daw_sample = int(float(request_form.get("sampleRate", 0)))
     # http获得wav文件并转换
