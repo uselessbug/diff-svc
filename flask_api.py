@@ -22,12 +22,17 @@ def voice_change_model():
     wave_file = request.files.get("sample", None)
     # 变调信息
     f_pitch_change = float(request_form.get("fPitchChange", 0))
+    # 获取spkid
+    speak_id = int(request_form.get("sSpeakId", 0))
+    if enable_spk_id_cover:
+        speak_id = spk_id
+    print("说话人:" + str(int_speak_Id))
     # DAW所需的采样率
     daw_sample = int(float(request_form.get("sampleRate", 0)))
     # http获得wav文件并转换
     input_wav_path = io.BytesIO(wave_file.read())
     # 模型推理
-    _f0_tst, _f0_pred, _audio = svc_model.infer(input_wav_path, spk_id=spk_id, key=f_pitch_change, acc=accelerate,
+    _f0_tst, _f0_pred, _audio = svc_model.infer(input_wav_path, spk_id=speak_id, key=f_pitch_change, acc=accelerate,
                                                 use_crepe=False)
     tar_audio = librosa.resample(_audio, hparams["audio_sample_rate"], daw_sample)
     # 返回音频
@@ -43,7 +48,10 @@ if __name__ == '__main__':
     model_path = f'./checkpoints/{project_name}/clean_model_ckpt_steps_120000.ckpt'
     config_path = f'./checkpoints/{project_name}/config.yaml'
 
+    # 默认说话人。以及是否优先使用默认说话人覆盖vst传入的参数。
     spk_id = 0
+    enable_spk_id_cover = False
+
     # 加速倍数
     accelerate = 50
     hubert_gpu = True
