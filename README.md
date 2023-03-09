@@ -12,6 +12,10 @@ Singing Voice Conversion via diffusion model
 
 ## 更新日志 /Changes Log
 
+> 2023.03.09
+> 
+> 优化nsf-hifigan速度 @diffsinger
+> 
 > 2023.02.18
 > 
 > 更新config参数，增加flask_api多人模型；取消midi a模式diffsinger套娃支持 @小狼
